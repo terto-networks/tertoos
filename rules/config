@@ -186,6 +186,13 @@ INCLUDE_SFLOW = y
 # INCLUDE_MGMT_FRAMEWORK - build docker-sonic-mgmt-framework for CLI and REST server support
 INCLUDE_MGMT_FRAMEWORK = y
 
+# INCLUDE_TERTOOS_CLI - build TertoOS IOS-XR CLI (klish overlay + tertoos-cli helper)
+# Requires INCLUDE_MGMT_FRAMEWORK = y. The mgmt-framework submodule is built on
+# branch tertoos/cli-v1 which adds the cli-xml/tertoos overlay; the helper is
+# packaged separately and shipped both on the host (/usr/sbin/tertoos-cli) and
+# inside the mgmt-framework container.
+INCLUDE_TERTOOS_CLI ?= y
+
 # ENABLE_HOST_SERVICE_ON_START - enable sonic-host-server for mgmt-framework and/or
 # gnmi containers to access host functionality by default
 ENABLE_HOST_SERVICE_ON_START = y

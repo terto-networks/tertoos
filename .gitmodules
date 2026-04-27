@@ -147,3 +147,6 @@
 [submodule "platform/alpinevs"]
 	path = platform/alpinevs
 	url = https://github.com/sonic-net/sonic-alpine/
+[submodule "src/terto-horizon"]
+	path = src/terto-horizon
+	url = https://github.com/terto-networks/terto-horizon.git
