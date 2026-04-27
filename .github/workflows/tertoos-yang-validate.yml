@@ -35,12 +35,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout (with terto-horizon submodule)
+      - name: Checkout outer fork (no submodules yet)
         uses: actions/checkout@v4
         with:
-          submodules: recursive
-          # Profundidade rasa suficiente — não precisamos de blame aqui.
           fetch-depth: 1
+
+      # terto-horizon é privado em terto-networks; o GITHUB_TOKEN do repo
+      # tertoos (público) não tem acesso cross-repo. Usamos uma deploy key
+      # read-only registrada em terto-horizon, com a chave privada
+      # armazenada em TERTO_HORIZON_DEPLOY_KEY (repo secret de tertoos).
+      - name: Setup SSH agent for submodule
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.TERTO_HORIZON_DEPLOY_KEY }}
+
+      - name: Initialize submodules over SSH
+        run: |
+          # Reescreve URLs https://github.com/ → git@github.com: só nesta
+          # invocação, para que o git submodule use a deploy key SSH.
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          git submodule update --init --recursive --depth 1 src/terto-horizon
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
