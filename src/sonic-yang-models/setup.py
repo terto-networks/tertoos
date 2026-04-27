@@ -221,6 +221,7 @@ yang_files = [
     'tertoos-banner-extensions.yang',
     'tertoos-bfd-extensions.yang',
     'tertoos-evpn.yang',
+    'tertoos-horizon.yang',
     'tertoos-l2vpn.yang',
     'tertoos-line-vty.yang',
     'tertoos-mpls.yang',

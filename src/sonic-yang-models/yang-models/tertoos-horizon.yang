@@ -1,0 +1,95 @@
+module tertoos-horizon {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-horizon";
+    prefix tos_horizon;
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS Horizon agent runtime config (S13.A). Singleton table
+         HORIZON_AGENT|global lida pelo terto-horizon-agent rodando como
+         systemd unit no switch. Agent conecta APENAS no Edge local
+         (nunca direto na internet).";
+
+    revision 2026-04-27 {
+        description "Initial S13.A schema.";
+    }
+
+    container sonic-horizon {
+
+        container HORIZON_AGENT {
+            list HORIZON_AGENT_LIST {
+                key "scope";
+
+                leaf scope {
+                    type string {
+                        pattern "global";
+                    }
+                    description "Singleton key — sempre 'global'.";
+                }
+                leaf enabled {
+                    type boolean;
+                    default false;
+                    description "Master switch do agent.";
+                }
+                leaf tenant_id {
+                    type string {
+                        pattern "[0-9a-fA-F-]{8,64}";
+                    }
+                    description "Tenant UUID emitido pelo Core.";
+                }
+                leaf site_id {
+                    type string {
+                        pattern "[A-Za-z][A-Za-z0-9_-]{0,63}";
+                    }
+                    description "Slug do site (Edge local).";
+                }
+                leaf broker_url {
+                    type string {
+                        pattern "nats://[A-Za-z0-9._:-]+:[0-9]+";
+                    }
+                    description "NATS URL do Edge local.";
+                }
+                leaf enrollment_token {
+                    type string;
+                    description
+                        "Token opaco para enrollment inicial. Consumido
+                         (set vazio) após sucesso. Write-once típico.";
+                }
+                leaf creds_file {
+                    type string;
+                    default "/etc/tertoos/horizon/agent.creds";
+                }
+                leaf ca_file {
+                    type string;
+                    default "/etc/tertoos/horizon/ca.crt";
+                }
+                leaf client_cert_file {
+                    type string;
+                    default "/etc/tertoos/horizon/client.crt";
+                }
+                leaf client_key_file {
+                    type string;
+                    default "/etc/tertoos/horizon/client.key";
+                }
+                leaf interval_heartbeat {
+                    type uint32 { range "5..3600"; }
+                    units "seconds";
+                    default 30;
+                }
+                leaf interval_counters {
+                    type uint32 { range "5..3600"; }
+                    units "seconds";
+                    default 10;
+                }
+                leaf subject_prefix {
+                    type string {
+                        pattern "[a-z][a-z0-9_-]{0,31}";
+                    }
+                    default "horizon";
+                }
+            }
+        }
+
+    }
+}
