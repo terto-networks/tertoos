@@ -1,0 +1,89 @@
+module tertoos-mpls {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-mpls";
+    prefix tos_mpls;
+
+    import ietf-inet-types { prefix inet; }
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS MPLS LDP schema. Cobre apenas LDP nesta fatia (S7);
+         SR-MPLS, RSVP-TE, e static label fica para fatias futuras.
+
+         Tabelas:
+           MPLS_LDP_ROUTER     -- per-VRF LDP instance.
+           MPLS_LDP_AF         -- per-VRF, per-AFI (ipv4/ipv6) config.
+           MPLS_LDP_INTERFACE  -- LDP-enabled interfaces (membership).
+           MPLS_LDP_NEIGHBOR   -- per-neighbor overrides.
+
+         Backend = frrcfgd em sonic-frr-mgmt-framework (handlers e
+         templates ldpd.conf.j2 adicionados em S7).";
+
+    revision 2026-04-27 {
+        description "Initial S7 LDP schema.";
+    }
+
+    typedef ldp_afi {
+        type enumeration {
+            enum ipv4;
+            enum ipv6;
+        }
+    }
+
+    container sonic-mpls {
+
+        container MPLS_LDP_ROUTER {
+            list MPLS_LDP_ROUTER_LIST {
+                key "vrf_name";
+                leaf vrf_name { type string; }
+                leaf enable { type boolean; }
+                leaf router-id { type inet:ipv4-address; }
+                leaf holdtime { type uint16; }
+                leaf keepalive { type uint16; }
+                leaf discovery-hello-holdtime { type uint16; }
+                leaf discovery-hello-interval { type uint16; }
+            }
+        }
+
+        container MPLS_LDP_AF {
+            list MPLS_LDP_AF_LIST {
+                key "vrf_name afi";
+                leaf vrf_name { type string; }
+                leaf afi { type ldp_afi; }
+                leaf enable { type boolean; }
+                leaf discovery-transport-address { type inet:ip-address; }
+                leaf discovery-targeted-hello-accept { type boolean; }
+                leaf label-local-allocate-host-only { type boolean; }
+            }
+        }
+
+        container MPLS_LDP_INTERFACE {
+            description "Membership-only — body vazio (chave-only).";
+            list MPLS_LDP_INTERFACE_LIST {
+                key "vrf_name afi interface";
+                leaf vrf_name { type string; }
+                leaf afi { type ldp_afi; }
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel|Vlan|Loopback)[0-9]+(\\.[0-9]+)?';
+                    }
+                }
+            }
+        }
+
+        container MPLS_LDP_NEIGHBOR {
+            list MPLS_LDP_NEIGHBOR_LIST {
+                key "vrf_name afi peer_lsr_id";
+                leaf vrf_name { type string; }
+                leaf afi { type ldp_afi; }
+                leaf peer_lsr_id { type inet:ipv4-address; }
+                leaf password { type string; }
+                leaf targeted { type boolean; }
+                leaf holdtime { type uint16; }
+                leaf keepalive { type uint16; }
+            }
+        }
+
+    }
+}

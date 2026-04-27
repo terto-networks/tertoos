@@ -1,0 +1,27 @@
+{# TertoOS — ldpd master template (S7 skeleton).
+
+   Este template é o entrypoint para render de FRR ldpd a partir das
+   tabelas MPLS_LDP_* e L2VPN_* em CONFIG_DB.
+
+   Estado atual: SKELETON. Sub-templates ldpd.conf.db.*.j2 ainda não
+   estão wired em frrcfgd.py — control-plane CLI/CONFIG_DB do TertoOS
+   está completo (S7 + S11) mas a geração efetiva do ldpd.conf será
+   completada quando o lab Centec estiver disponível para validação
+   runtime (gating SAI MPLS — AS5912/Trident III não suporta MPLS
+   pleno).
+
+   Quando o backend for completado, este arquivo deve incluir os
+   sub-templates na ordem:
+     1. ldpd.conf.db.global.j2     — MPLS_LDP_ROUTER (router-id, timers)
+     2. ldpd.conf.db.af.j2         — MPLS_LDP_AF (per-AFI discovery)
+     3. ldpd.conf.db.interface.j2  — MPLS_LDP_INTERFACE (LDP-enabled if)
+     4. ldpd.conf.db.neighbor.j2   — MPLS_LDP_NEIGHBOR (per-peer)
+     5. ldpd.conf.db.l2vpn.j2      — L2VPN_PW_CLASS + L2VPN_XCONNECT_GROUP
+#}
+!
+! TertoOS LDP (skeleton — render completo pendente)
+!
+{# placeholder para evitar arquivo vazio nos render tests #}
+hostname ldpd
+log syslog
+!

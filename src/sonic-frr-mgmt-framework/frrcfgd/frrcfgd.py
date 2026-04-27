@@ -120,7 +120,18 @@ class BgpdClientMgr(threading.Thread):
             'IGMP_INTERFACE_QUERY': ['pimd'],
             'SRV6_MY_LOCATORS': ['zebra'],
             'SRV6_MY_SOURCE': ['zebra'],
-            'SRV6_MY_SIDS': ['mgmtd']
+            'SRV6_MY_SIDS': ['mgmtd'],
+            # TertoOS S7 — MPLS LDP. Schema em tertoos-mpls.yang.
+            # Templates em templates/ldpd/ (skeleton). Render para FRR
+            # ldpd a completar quando lab Centec estiver disponível
+            # (gating SAI MPLS — AS5912/Trident III não suporta).
+            'MPLS_LDP_ROUTER': ['ldpd'],
+            'MPLS_LDP_AF': ['ldpd'],
+            'MPLS_LDP_INTERFACE': ['ldpd'],
+            'MPLS_LDP_NEIGHBOR': ['ldpd'],
+            # TertoOS S11 — L2VPN VPWS. Schema em tertoos-l2vpn.yang.
+            'L2VPN_PW_CLASS': ['ldpd'],
+            'L2VPN_XCONNECT_GROUP': ['ldpd']
 
     }
     VTYSH_CMD_DAEMON = [(r'show (ip|ipv6) route($|\s+\S+)', ['zebra']),

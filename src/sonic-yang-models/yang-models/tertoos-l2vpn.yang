@@ -1,0 +1,88 @@
+module tertoos-l2vpn {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-l2vpn";
+    prefix tos_l2vpn;
+
+    import ietf-inet-types { prefix inet; }
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS L2VPN VPWS schema (P3 #29-#30). Cobre point-to-point
+         pseudowire over MPLS (LDP signaling). VPLS (#31) e EVPN-MPLS
+         (#37) ficam fora desta fatia.
+
+         Tabelas:
+           L2VPN_PW_CLASS       -- shared pseudowire parameters.
+           L2VPN_XCONNECT_GROUP -- p2p attachments by group/p2p name.
+
+         Backend = frrcfgd em sonic-frr-mgmt-framework (handlers e
+         template ldpd.conf.db.l2vpn.j2 em S11).";
+
+    revision 2026-04-27 {
+        description "Initial S11 L2VPN VPWS schema.";
+    }
+
+    typedef pw_encapsulation {
+        type enumeration {
+            enum mpls;
+        }
+    }
+
+    typedef pw_transport_mode {
+        type enumeration {
+            enum ethernet;
+            enum vlan;
+        }
+    }
+
+    container sonic-l2vpn {
+
+        container L2VPN_PW_CLASS {
+            list L2VPN_PW_CLASS_LIST {
+                key "name";
+                leaf name { type string; }
+                leaf encapsulation {
+                    type pw_encapsulation;
+                    default mpls;
+                }
+                leaf control-word { type boolean; }
+                leaf mtu { type uint16 { range "64..9216"; } }
+                leaf transport-mode {
+                    type pw_transport_mode;
+                    default ethernet;
+                }
+            }
+        }
+
+        container L2VPN_XCONNECT_GROUP {
+            description
+                "Each entry is one p2p pseudowire (group/p2p tuple).
+                 The IOS-XR `l2vpn xconnect group <g> p2p <p>` block
+                 maps directly to one row keyed (group_name, p2p_name).";
+            list L2VPN_XCONNECT_GROUP_LIST {
+                key "group_name p2p_name";
+                leaf group_name { type string; }
+                leaf p2p_name { type string; }
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel|Vlan|Loopback)[0-9]+(\\.[0-9]+)?';
+                    }
+                }
+                leaf peer-address { type inet:ip-address; }
+                leaf pw-id { type uint32 { range "1..4294967295"; } }
+                leaf pw-class {
+                    type leafref {
+                        path "/sonic-l2vpn/L2VPN_PW_CLASS/L2VPN_PW_CLASS_LIST/name";
+                    }
+                }
+                leaf mtu { type uint16 { range "64..9216"; } }
+                leaf enabled {
+                    type boolean;
+                    default true;
+                }
+            }
+        }
+
+    }
+}
