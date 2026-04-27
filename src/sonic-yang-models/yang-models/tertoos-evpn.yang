@@ -1,0 +1,110 @@
+module tertoos-evpn {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-evpn";
+    prefix tos_evpn;
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS EVPN multi-homing schema (S10). Cobre o que upstream
+         NÃO modela: ethernet-segment (ESI) para EVPN-VXLAN multi-homing
+         all-active. Single-homed Type-2/3/5, BGP EVPN VNI/RT e VXLAN
+         tunnels usam schemas upstream (sonic-vxlan.yang + sonic-bgp-*).
+
+         Tabela:
+           EVPN_ETHERNET_SEGMENT -- per-interface ESI config para
+                                    multi-homing all-active.
+
+         Backend: swss/orchagent VXLAN consome single-homed perfeitamente
+         no Trident III (AS5912). Sync de MAC entre VTEPs em ESI all-active
+         exige handlers adicionais — fica skeleton para quando o lab tiver
+         pares de switches.";
+
+    revision 2026-04-27 {
+        description "Initial S10 EVPN ethernet-segment schema.";
+    }
+
+    typedef esi_type {
+        type enumeration {
+            enum type-0 {
+                description "Manually configured ESI (9 octets after type byte).";
+            }
+            enum type-1 {
+                description "ESI auto-derived from LACP system-id.";
+            }
+            enum type-3 {
+                description "ESI auto-derived from MAC + local discriminator.";
+            }
+            enum type-5 {
+                description "ESI auto-derived from router-id + local discriminator.";
+            }
+        }
+    }
+
+    typedef esi_redundancy_mode {
+        type enumeration {
+            enum all-active;
+            enum single-active;
+        }
+    }
+
+    typedef esi_df_election {
+        type enumeration {
+            enum service-carving;
+            enum preference;
+        }
+    }
+
+    container sonic-evpn {
+
+        container EVPN_ETHERNET_SEGMENT {
+            list EVPN_ETHERNET_SEGMENT_LIST {
+                key "name";
+                leaf name {
+                    type string {
+                        pattern '[A-Za-z][A-Za-z0-9_-]{0,63}';
+                    }
+                    description "ES name (TertoOS-local handle).";
+                }
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel)[0-9]+';
+                    }
+                    description
+                        "Attachment interface. Single-link or PortChannel
+                         (ESI all-active typically uses LACP bundle).";
+                }
+                leaf esi_type {
+                    type esi_type;
+                    default type-0;
+                }
+                leaf esi_value {
+                    type string {
+                        pattern '([0-9a-fA-F]{2}:){8}[0-9a-fA-F]{2}' {
+                            error-message
+                                "esi_value must be 9 colon-separated hex bytes (type-0)";
+                        }
+                    }
+                    description
+                        "ESI bytes. Required when esi_type=type-0; ignored
+                         (frrcfgd derives) for auto types.";
+                }
+                leaf redundancy_mode {
+                    type esi_redundancy_mode;
+                    default all-active;
+                }
+                leaf df_election_method {
+                    type esi_df_election;
+                    default service-carving;
+                }
+                leaf df_preference {
+                    type uint16;
+                    description
+                        "DF preference value, valid only when
+                         df_election_method=preference.";
+                }
+            }
+        }
+
+    }
+}
