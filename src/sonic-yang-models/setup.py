@@ -220,6 +220,7 @@ yang_files = [
     'tertoos-acl.yang',
     'tertoos-banner-extensions.yang',
     'tertoos-line-vty.yang',
+    'tertoos-ospf.yang',
     'tertoos-port-extensions.yang',
     'tertoos-portchannel-extensions.yang',
     'tertoos-vlan-sub-interface-extensions.yang',
