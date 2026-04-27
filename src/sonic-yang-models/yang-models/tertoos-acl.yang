@@ -1,0 +1,368 @@
+module tertoos-acl {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-acl";
+    prefix tos_acl;
+
+    import ietf-inet-types {
+        prefix inet;
+    }
+
+    organization
+        "TertoOS";
+    contact
+        "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS YANG model for the SONiC ACL_TABLE and ACL_RULE
+         CONFIG_DB tables. Stock SONiC consumes these via aclorch
+         (sonic-swss) but ships no native YANG schema for them, so the
+         GCU `config apply-patch` cannot validate ACL changes today.
+         This module fills that gap so that the IOS-XR style
+         `ipv4|ipv6 access-list <name>` and `ethernet-services
+         access-list <name>` blocks compile cleanly into JSON Patch
+         operations on these tables.
+
+         The ACL data plane (orchagent + aclorch) is unchanged — this is
+         purely a control-plane validation layer.";
+
+    revision 2026-04-27 {
+        description
+            "Initial revision: ACL_TABLE + ACL_RULE with L2/L3/L4/ICMP
+             match fields and PACKET_ACTION + REDIRECT/MIRROR actions.";
+    }
+
+    typedef acl_type {
+        type enumeration {
+            enum L3        { description "IPv4 ACL"; }
+            enum L3V6      { description "IPv6 ACL"; }
+            enum L3V4V6    { description "Dual-stack IPv4/IPv6 ACL (single table)."; }
+            enum L2        { description "Ethernet (MAC/802.1Q) ACL"; }
+            enum MIRROR    { description "Span/Mirror IPv4 selector ACL"; }
+            enum MIRRORV6  { description "Span/Mirror IPv6 selector ACL"; }
+            enum CTRLPLANE { description "Control-plane (CPU-bound) ACL"; }
+        }
+        description "ACL_TABLE.type — what kind of selector this ACL applies.";
+    }
+
+    typedef acl_stage {
+        type enumeration {
+            enum INGRESS;
+            enum EGRESS;
+        }
+        default INGRESS;
+        description "Pipeline stage at which the ACL is enforced.";
+    }
+
+    typedef packet_action {
+        type enumeration {
+            enum FORWARD;
+            enum DROP;
+            enum ACCEPT { description "Bypass remaining stages (CTRLPLANE)."; }
+        }
+        description "PACKET_ACTION leaf of an ACL_RULE.";
+    }
+
+    typedef ip_type_match {
+        type enumeration {
+            enum ANY      { description "Any IP version."; }
+            enum IPV4ANY  { description "Any IPv4 packet."; }
+            enum IPV6ANY  { description "Any IPv6 packet."; }
+            enum ARP      { description "ARP packets only."; }
+        }
+        description "IP_TYPE leaf for L3V4V6 dual-stack tables.";
+    }
+
+    typedef ctrlplane_service {
+        type enumeration {
+            enum SSH;
+            enum SNMP;
+            enum NTP;
+            enum BGP;
+            enum HTTP;
+            enum HTTPS;
+            enum NETCONF;
+            enum GNMI;
+        }
+        description "Service tag for CTRLPLANE ACL_TABLE.services entries.";
+    }
+
+    typedef tcp_flags_match {
+        type string {
+            pattern '0x[0-9a-fA-F]{1,2}/0x[0-9a-fA-F]{1,2}' {
+                error-message
+                    "TCP_FLAGS must be value/mask in hex (e.g. 0x02/0x02 for SYN).";
+            }
+        }
+        description
+            "TCP flags match in bitmask format <value>/<mask>. Both are
+             one-byte hex, where the value's masked bits must match.";
+    }
+
+    typedef l4_port_or_range {
+        type string {
+            pattern '([0-9]{1,5})|([0-9]{1,5}-[0-9]{1,5})' {
+                error-message "Must be <port> or <low>-<high>, range 0..65535.";
+            }
+        }
+        description "L4 port single value or inclusive range.";
+    }
+
+    container sonic-acl {
+
+        container ACL_TABLE {
+            description "ACL table definitions. Key on table name.";
+            list ACL_TABLE_LIST {
+                key "name";
+                description "One entry per ACL table.";
+
+                leaf name {
+                    type string {
+                        pattern '[A-Za-z][A-Za-z0-9_-]{0,63}' {
+                            error-message
+                                "ACL table name must be 1..64 chars, start with a letter.";
+                        }
+                    }
+                    description "Table name. Referenced by ACL_RULE.aclname.";
+                }
+
+                leaf type {
+                    type acl_type;
+                    mandatory true;
+                    description "Selector class — gated which match leaves are valid in rules.";
+                }
+
+                leaf stage {
+                    type acl_stage;
+                    description "Where in the pipeline the ACL applies.";
+                }
+
+                leaf policy_desc {
+                    type string {
+                        length "0..255";
+                    }
+                    description "Free-text description of the policy intent.";
+                }
+
+                leaf-list ports {
+                    type string {
+                        pattern '[A-Za-z][A-Za-z0-9_./-]{0,63}';
+                    }
+                    description
+                        "Interfaces to which this ACL is bound. Names follow
+                         the SONiC port/portchannel/vlan/sub-interface
+                         naming. Validation against existing ports is left
+                         to swssd; we accept any well-formed name to keep
+                         this module independent.";
+                }
+
+                leaf-list services {
+                    type ctrlplane_service;
+                    description
+                        "Only for type=CTRLPLANE. Lists which control-plane
+                         services this table protects.";
+                }
+
+                must
+                    "(./type != 'CTRLPLANE') or (count(./ports) = 0)" {
+                    error-message "CTRLPLANE tables bind by service, not by port.";
+                }
+                must
+                    "(./type = 'CTRLPLANE') or (count(./services) = 0)" {
+                    error-message "Only CTRLPLANE tables use the services leaf-list.";
+                }
+            }
+        }
+
+        container ACL_RULE {
+            description
+                "ACL rules. Composite key (aclname, rulename); priority
+                 determines evaluation order within the parent table.";
+            list ACL_RULE_LIST {
+                key "aclname rulename";
+                description "One entry per rule within an ACL table.";
+
+                leaf aclname {
+                    type leafref {
+                        path "../../../ACL_TABLE/ACL_TABLE_LIST/name";
+                    }
+                    description "Parent ACL_TABLE.name.";
+                }
+
+                leaf rulename {
+                    type string {
+                        pattern 'RULE_[0-9]{1,9}' {
+                            error-message
+                                "rulename must be RULE_<seq>; the IOS-XR seq is
+                                 inverted to PRIORITY = 10000 - seq by tertoos-cli.";
+                        }
+                    }
+                    description "Rule identifier (RULE_<seq>).";
+                }
+
+                leaf priority {
+                    type uint32 {
+                        range "1..9999";
+                    }
+                    mandatory true;
+                    description
+                        "Match priority; higher value matches first. SONiC
+                         caps at 9999 per table.";
+                }
+
+                /* ------------------- actions ------------------- */
+
+                leaf PACKET_ACTION {
+                    type packet_action;
+                    description
+                        "Action for packets that match this rule. Mutually
+                         exclusive with REDIRECT_ACTION and MIRROR_*.";
+                }
+
+                leaf REDIRECT_ACTION {
+                    type string;
+                    description
+                        "Redirect target (next-hop IP or interface). Mutually
+                         exclusive with PACKET_ACTION.";
+                }
+
+                leaf MIRROR_ACTION {
+                    type string;
+                    description "Mirror session name (legacy alias for ingress).";
+                }
+                leaf MIRROR_INGRESS_ACTION {
+                    type string;
+                    description "Mirror session name applied on ingress.";
+                }
+                leaf MIRROR_EGRESS_ACTION {
+                    type string;
+                    description "Mirror session name applied on egress.";
+                }
+
+                must
+                    "count(./PACKET_ACTION | ./REDIRECT_ACTION) <= 1" {
+                    error-message
+                        "PACKET_ACTION and REDIRECT_ACTION are mutually exclusive.";
+                }
+
+                /* ------------------- L2 match ------------------- */
+
+                leaf ETHER_TYPE {
+                    type uint32 {
+                        range "0..65535";
+                    }
+                    description "EtherType (e.g. 0x0800=IPv4, 0x86dd=IPv6, 0x0806=ARP).";
+                }
+
+                leaf VLAN_ID {
+                    type uint16 {
+                        range "1..4094";
+                    }
+                    description "Inner VLAN id match.";
+                }
+
+                /* ------------------- L3 match ------------------- */
+
+                leaf SRC_IP {
+                    type inet:ipv4-prefix;
+                    description "Source IPv4 CIDR.";
+                }
+                leaf DST_IP {
+                    type inet:ipv4-prefix;
+                    description "Destination IPv4 CIDR.";
+                }
+                leaf SRC_IPV6 {
+                    type inet:ipv6-prefix;
+                    description "Source IPv6 CIDR.";
+                }
+                leaf DST_IPV6 {
+                    type inet:ipv6-prefix;
+                    description "Destination IPv6 CIDR.";
+                }
+
+                leaf IP_PROTOCOL {
+                    type union {
+                        type uint8;
+                        type enumeration {
+                            enum any;
+                            enum icmp { value 1; }
+                            enum tcp  { value 6; }
+                            enum udp  { value 17; }
+                            enum gre  { value 47; }
+                            enum esp  { value 50; }
+                            enum ah   { value 51; }
+                            enum icmpv6 { value 58; }
+                            enum ospf { value 89; }
+                            enum vrrp { value 112; }
+                        }
+                    }
+                    description
+                        "IP protocol number (0..255) or one of the named
+                         shortcuts; 'any' means do not match on protocol.";
+                }
+
+                leaf IP_TYPE {
+                    type ip_type_match;
+                    description "Coarse IP-version match (used in L3V4V6 tables).";
+                }
+
+                /* ------------------- L4 match ------------------- */
+
+                leaf L4_SRC_PORT {
+                    type uint16 { range "0..65535"; }
+                    description "Single source port.";
+                }
+                leaf L4_DST_PORT {
+                    type uint16 { range "0..65535"; }
+                    description "Single destination port.";
+                }
+                leaf L4_SRC_PORT_RANGE {
+                    type l4_port_or_range;
+                    description "Source port range <low>-<high>.";
+                }
+                leaf L4_DST_PORT_RANGE {
+                    type l4_port_or_range;
+                    description "Destination port range <low>-<high>.";
+                }
+
+                leaf TCP_FLAGS {
+                    type tcp_flags_match;
+                    description "TCP flags as <value>/<mask> hex (e.g. 0x02/0x02 for SYN).";
+                }
+
+                /* ------------------- ICMP match ------------------- */
+
+                leaf ICMP_TYPE {
+                    type uint8;
+                    description "ICMPv4 type.";
+                }
+                leaf ICMP_CODE {
+                    type uint8;
+                    description "ICMPv4 code.";
+                }
+                leaf ICMPV6_TYPE {
+                    type uint8;
+                    description "ICMPv6 type.";
+                }
+                leaf ICMPV6_CODE {
+                    type uint8;
+                    description "ICMPv6 code.";
+                }
+
+                /* ------------------- Other ------------------- */
+
+                leaf-list IN_PORTS {
+                    type string;
+                    description
+                        "Input port match (subset of the parent table's
+                         bound ports).";
+                }
+
+                leaf DSCP {
+                    type uint8 { range "0..63"; }
+                    description
+                        "DSCP value match (used by MIRROR-type tables to
+                         classify candidate flows).";
+                }
+            }
+        }
+    }
+}

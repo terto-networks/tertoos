@@ -217,6 +217,7 @@ yang_files = [
     'sonic-xcvrd-log.yang',
     'sonic-ztp.yang',
     'sonic-fast-linkup.yang',
+    'tertoos-acl.yang',
     'tertoos-banner-extensions.yang',
     'tertoos-line-vty.yang',
     'tertoos-port-extensions.yang',
