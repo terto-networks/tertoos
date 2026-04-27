@@ -1,0 +1,124 @@
+module tertoos-line-vty {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-line-vty";
+    prefix tos_line_vty;
+
+    organization
+        "TertoOS";
+    contact
+        "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS LINE_VTY table: session-level configuration for the IOS-XR
+         `line {console|default|template <name>}` blocks. Stock SONiC ships
+         CONSOLE_PORT for the serial hardware (baud_rate, flow_control,
+         escape_char, remote_device); this module covers the cross-cutting
+         session attributes (exec_timeout, transport_input, login,
+         access_class) that apply equally to console, vty default, and
+         named templates.
+
+         Scope key conventions:
+           - 'console'        applies to the serial console session layer.
+           - 'default'        applies to all VTY (SSH/telnet) sessions
+                              that do not bind a named template.
+           - 'template-<name>'lines bound to a named template.";
+
+    revision 2026-04-26 {
+        description
+            "Initial revision: scope key + exec_timeout, transport_input,
+             login, access_class.";
+    }
+
+    typedef line_scope {
+        type string {
+            pattern 'console|default|template-[A-Za-z][A-Za-z0-9_-]{0,63}' {
+                error-message
+                    "scope must be 'console', 'default', or 'template-<name>'";
+            }
+        }
+        description "LINE_VTY scope key.";
+    }
+
+    typedef transport_choice {
+        type enumeration {
+            enum ssh;
+            enum telnet;
+            enum all;
+            enum none;
+        }
+        description "Permitted inbound transports.";
+    }
+
+    typedef login_method {
+        type enumeration {
+            enum none;
+            enum local;
+            enum aaa;
+        }
+        description
+            "How the line authenticates incoming sessions:
+             none = no auth (rare, for read-only consoles in lab),
+             local = use local /etc/passwd or DEVICE_METADATA users,
+             aaa = use the AAA pipeline (TACACS+/RADIUS/local).";
+    }
+
+    container sonic-line-vty {
+
+        container LINE_VTY {
+            description
+                "Per-scope session-level configuration for VTY-style
+                 lines (console session layer, default VTY, named
+                 templates).";
+
+            list LINE_VTY_LIST {
+                key "scope";
+                description "One entry per scope.";
+
+                leaf scope {
+                    type line_scope;
+                    description "Scope key (console | default | template-<name>).";
+                }
+
+                leaf exec_timeout {
+                    type uint32 {
+                        range "0..35791" {
+                            error-message
+                                "exec_timeout must be 0..35791 minutes (0 disables timeout).";
+                        }
+                    }
+                    units "minutes";
+                    description
+                        "EXEC inactivity timeout in minutes. 0 disables the
+                         timeout (terminal stays open until explicit logout).";
+                }
+
+                leaf transport_input {
+                    type transport_choice;
+                    default ssh;
+                    description
+                        "Permitted inbound transports for VTY lines.
+                         Ignored for scope 'console'.";
+                }
+
+                leaf login {
+                    type login_method;
+                    default aaa;
+                    description
+                        "Authentication method for new sessions on this line.";
+                }
+
+                leaf access_class {
+                    type string {
+                        pattern '[A-Za-z][A-Za-z0-9_-]{0,63}' {
+                            error-message
+                                "access_class must reference an ACL by name.";
+                        }
+                    }
+                    description
+                        "Apply this IPv4 access-list to filter inbound
+                         management connections on this line. The ACL must
+                         exist in /sonic-acl:sonic-acl/ACL_TABLE.";
+                }
+            }
+        }
+    }
+}

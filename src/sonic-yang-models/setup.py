@@ -217,6 +217,12 @@ yang_files = [
     'sonic-xcvrd-log.yang',
     'sonic-ztp.yang',
     'sonic-fast-linkup.yang',
+    'tertoos-banner-extensions.yang',
+    'tertoos-line-vty.yang',
+    'tertoos-port-extensions.yang',
+    'tertoos-portchannel-extensions.yang',
+    'tertoos-vlan-sub-interface-extensions.yang',
+    'tertoos-vrf-extensions.yang',
 ]
 
 class my_build_py(build_py):

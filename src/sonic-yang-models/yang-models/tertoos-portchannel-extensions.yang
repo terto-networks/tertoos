@@ -1,0 +1,49 @@
+module tertoos-portchannel-extensions {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-portchannel-extensions";
+    prefix tos_pc_ext;
+
+    import sonic-portchannel {
+        prefix lag;
+    }
+
+    organization
+        "TertoOS";
+    contact
+        "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS extensions to sonic-portchannel adding the LACP mode
+         leaf on PORTCHANNEL_MEMBER. Stock SONiC PORTCHANNEL has a `mode`
+         leaf that means switchport-mode (routed|access|trunk), distinct
+         from the LACP behavior IOS-XR exposes with
+         `bundle id <id> mode {active|passive|on}`.";
+
+    revision 2026-04-26 {
+        description "Initial revision: lacp_mode on PORTCHANNEL_MEMBER.";
+    }
+
+    typedef lacp_mode_type {
+        type enumeration {
+            enum active {
+                description "Initiate LACP negotiation actively.";
+            }
+            enum passive {
+                description "Respond to LACP only if peer initiates.";
+            }
+            enum on {
+                description "Static aggregation (no LACP).";
+            }
+        }
+        description "LACP behavior of a PortChannel member.";
+    }
+
+    augment "/lag:sonic-portchannel/lag:PORTCHANNEL_MEMBER/lag:PORTCHANNEL_MEMBER_LIST" {
+
+        leaf lacp_mode {
+            type lacp_mode_type;
+            default active;
+            description
+                "LACP behavior for this physical member of the bundle.";
+        }
+    }
+}

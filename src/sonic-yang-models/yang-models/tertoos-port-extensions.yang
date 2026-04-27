@@ -1,0 +1,40 @@
+module tertoos-port-extensions {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-port-extensions";
+    prefix tos_port_ext;
+
+    import sonic-port {
+        prefix port;
+    }
+
+    organization
+        "TertoOS";
+    contact
+        "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS extensions to sonic-port adding operator-friendly
+         attributes that exist in IOS-XR but not in stock SONiC.";
+
+    revision 2026-04-26 {
+        description
+            "Initial revision: load_interval.";
+    }
+
+    augment "/port:sonic-port/port:PORT/port:PORT_LIST" {
+
+        leaf load_interval {
+            type uint16 {
+                range "1..600" {
+                    error-message
+                        "load_interval must be between 1 and 600 seconds.";
+                }
+            }
+            units "seconds";
+            description
+                "Counter polling interval for input/output rate
+                 calculations on this port. Lower values give more
+                 responsive `show interfaces` rate displays at the cost
+                 of slightly more CPU.";
+        }
+    }
+}

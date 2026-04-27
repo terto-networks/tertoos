@@ -1,0 +1,46 @@
+module tertoos-vlan-sub-interface-extensions {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-vlan-sub-interface-extensions";
+    prefix tos_vsi_ext;
+
+    import sonic-vlan-sub-interface {
+        prefix vsi;
+    }
+
+    organization
+        "TertoOS";
+    contact
+        "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS extensions to sonic-vlan-sub-interface adding leaves that
+         IOS-XR allows on sub-interfaces but stock SONiC doesn't model:
+         mtu and description.";
+
+    revision 2026-04-26 {
+        description
+            "Initial revision: mtu, description on VLAN_SUB_INTERFACE.";
+    }
+
+    augment "/vsi:sonic-vlan-sub-interface/vsi:VLAN_SUB_INTERFACE/vsi:VLAN_SUB_INTERFACE_LIST" {
+
+        leaf mtu {
+            type uint16 {
+                range "576..9216" {
+                    error-message
+                        "MTU must be between 576 and 9216 bytes.";
+                }
+            }
+            description
+                "L3 MTU of this sub-interface. Independent from the
+                 parent port MTU.";
+        }
+
+        leaf description {
+            type string {
+                length "1..255";
+            }
+            description
+                "Free-text description of this sub-interface.";
+        }
+    }
+}

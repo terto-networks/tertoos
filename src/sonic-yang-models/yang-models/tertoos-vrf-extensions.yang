@@ -1,0 +1,108 @@
+module tertoos-vrf-extensions {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-vrf-extensions";
+    prefix tos_vrf_ext;
+
+    import sonic-vrf {
+        prefix vrf;
+    }
+
+    organization
+        "TertoOS";
+    contact
+        "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS extensions to sonic-vrf adding L3VPN attributes:
+         Route Distinguisher (rd), per-AF Route Target import/export,
+         and per-AF route-policy hooks. Required for the IOS-XR
+         `vrf <name> / address-family <af> unicast / import|export
+         route-target ...` configuration model.";
+
+    revision 2026-04-26 {
+        description
+            "Initial revision: rd, ipv4/ipv6 import_rt, export_rt,
+             import_policy, export_policy.";
+    }
+
+    typedef route_distinguisher {
+        type string {
+            pattern '([0-9]+:[0-9]+)|((([0-9]{1,3}\.){3}[0-9]{1,3}):[0-9]+)' {
+                error-message "RD must be ASN:nn or A.B.C.D:nn";
+            }
+        }
+        description
+            "Route Distinguisher: ASN:nn (e.g. 65000:100) or
+             A.B.C.D:nn (e.g. 10.0.0.1:100).";
+    }
+
+    typedef route_target {
+        type string {
+            pattern '([0-9]+:[0-9]+)|((([0-9]{1,3}\.){3}[0-9]{1,3}):[0-9]+)' {
+                error-message "RT must be ASN:nn or A.B.C.D:nn";
+            }
+        }
+        description "Route Target in extended-community syntax.";
+    }
+
+    typedef rpl_name {
+        type string {
+            pattern '[A-Za-z][A-Za-z0-9_-]{0,63}';
+        }
+        description "Reference to a route-policy (RPL) by name.";
+    }
+
+    augment "/vrf:sonic-vrf/vrf:VRF/vrf:VRF_LIST" {
+
+        leaf rd {
+            type route_distinguisher;
+            description
+                "Route Distinguisher used to make per-VRF routes globally
+                 unique within VPNv4/VPNv6 address families.";
+        }
+
+        leaf-list ipv4_import_rt {
+            type route_target;
+            description
+                "Route Targets imported into this VRF's IPv4 unicast RIB.";
+        }
+
+        leaf-list ipv4_export_rt {
+            type route_target;
+            description
+                "Route Targets exported with routes leaked from this VRF's
+                 IPv4 unicast RIB.";
+        }
+
+        leaf-list ipv6_import_rt {
+            type route_target;
+            description "Same as ipv4_import_rt for IPv6 unicast.";
+        }
+
+        leaf-list ipv6_export_rt {
+            type route_target;
+            description "Same as ipv4_export_rt for IPv6 unicast.";
+        }
+
+        leaf ipv4_import_policy {
+            type rpl_name;
+            description
+                "Route-policy applied on import of routes into this VRF
+                 (IPv4 unicast).";
+        }
+
+        leaf ipv4_export_policy {
+            type rpl_name;
+            description "Same as ipv4_import_policy for export.";
+        }
+
+        leaf ipv6_import_policy {
+            type rpl_name;
+            description "Same as ipv4_import_policy for IPv6 unicast.";
+        }
+
+        leaf ipv6_export_policy {
+            type rpl_name;
+            description "Same as ipv6_import_policy for export.";
+        }
+    }
+}

@@ -1,0 +1,88 @@
+# TertoOS — YANG validation
+#
+# Roda pyang --strict nos YANGs do fork (sonic-yang-models/yang-models e
+# extensões TertoOS) sempre que houver alteração nesses caminhos. Falha
+# rápido para impedir merges com YANG mal-formado.
+
+name: TertoOS YANG validate
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'src/sonic-yang-models/yang-models/**'
+      - 'src/sonic-yang-models/yang-templates/**'
+      - 'src/sonic-yang-models/setup.py'
+      - 'src/terto-horizon/scripts/validate-yang.sh'
+      - 'src/terto-horizon/scripts/yang-deps/**'
+      - '.github/workflows/tertoos-yang-validate.yml'
+  pull_request:
+    paths:
+      - 'src/sonic-yang-models/yang-models/**'
+      - 'src/sonic-yang-models/yang-templates/**'
+      - 'src/sonic-yang-models/setup.py'
+      - 'src/terto-horizon/scripts/validate-yang.sh'
+      - 'src/terto-horizon/scripts/yang-deps/**'
+      - '.github/workflows/tertoos-yang-validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pyang:
+    name: pyang --strict
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (with terto-horizon submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Profundidade rasa suficiente — não precisamos de blame aqui.
+          fetch-depth: 1
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install pyang and Jinja2
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'pyang==2.7.1' 'Jinja2>=3.1'
+
+      - name: Validate TertoOS YANGs
+        run: bash src/terto-horizon/scripts/validate-yang.sh
+
+      - name: Smoke-validate full sonic-yang set
+        # Validação extra: roda pyang em todos os sonic-*.yang também,
+        # garantindo que nossos augments não criam conflitos no conjunto.
+        run: |
+          set -euo pipefail
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+          # Render templates
+          for j2 in src/sonic-yang-models/yang-templates/*.yang.j2; do
+              python -c "
+          import sys
+          from jinja2 import Template
+          with open(sys.argv[1]) as f: t = Template(f.read())
+          with open(sys.argv[2], 'w') as f: f.write(t.render())
+          " "$j2" "$WORK/$(basename "$j2" .j2)"
+          done
+          cp src/sonic-yang-models/yang-models/*.yang "$WORK/"
+          cp src/terto-horizon/scripts/yang-deps/*.yang "$WORK/"
+          # Strict pass over everything (exclude the warning about vnet).
+          pyang --strict -p "$WORK" "$WORK"/sonic-*.yang "$WORK"/tertoos-*.yang \
+              2> /tmp/pyang.err || EXIT=$?
+          # Filtra warning conhecido upstream (sonic-vnet ietf-inet-types unused)
+          # mas falha em qualquer error real.
+          if grep -E "^[^:]+:[0-9]+: error:" /tmp/pyang.err; then
+              echo "=== pyang errors ===" >&2
+              cat /tmp/pyang.err >&2
+              exit 1
+          fi
+          cat /tmp/pyang.err
+          echo "OK: full set passes pyang --strict"

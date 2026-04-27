@@ -1,0 +1,36 @@
+module tertoos-banner-extensions {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-banner-extensions";
+    prefix tos_banner_ext;
+
+    import sonic-banner {
+        prefix banner_message;
+    }
+
+    organization
+        "TertoOS";
+    contact
+        "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS extensions to sonic-banner. Adds an `exec` banner
+         (post-login banner shown when entering EXEC mode), matching
+         the IOS-XR `banner exec` command.
+
+         The `motd`, `login`, and `logout` leaves provided by
+         sonic-banner are reused as-is.";
+
+    revision 2026-04-26 {
+        description
+            "Initial revision: augment BANNER_MESSAGE/global with `exec`.";
+    }
+
+    augment "/banner_message:sonic-banner/banner_message:BANNER_MESSAGE/banner_message:global" {
+        leaf exec {
+            type string;
+            description
+                "Banner shown to the user immediately after authentication
+                 succeeds (before the first prompt). IOS-XR `banner exec`.";
+            default "";
+        }
+    }
+}
