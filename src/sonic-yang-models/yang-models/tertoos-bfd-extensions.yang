@@ -1,0 +1,75 @@
+module tertoos-bfd-extensions {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-bfd-extensions";
+    prefix tos_bfd;
+
+    import ietf-inet-types { prefix inet; }
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS BFD schema (S12). Upstream sonic-bfd.yang não existe;
+         frrcfgd consome BFD_PEER_SINGLE_HOP / BFD_PEER_MULTI_HOP via
+         key_maps internos. Este módulo formaliza os leaves que a CLI
+         IOS-XR escreve.";
+
+    revision 2026-04-27 {
+        description "Initial S12 BFD schema.";
+    }
+
+    grouping bfd-peer-common {
+        leaf peer_address {
+            type inet:ip-address;
+            description "Remote peer IP address.";
+        }
+        leaf interface {
+            type string;
+            description "Local interface (single-hop only).";
+        }
+        leaf vrf {
+            type string;
+        }
+        leaf local_address {
+            type inet:ip-address;
+        }
+        leaf tx_interval {
+            type uint32 { range "10..60000"; }
+            units "milliseconds";
+        }
+        leaf rx_interval {
+            type uint32 { range "10..60000"; }
+            units "milliseconds";
+        }
+        leaf multiplier {
+            type uint8 { range "2..255"; }
+        }
+        leaf passive {
+            type boolean;
+        }
+        leaf shutdown {
+            type boolean;
+        }
+        leaf echo_active {
+            type boolean;
+            description "Enable BFD echo function (single-hop only).";
+        }
+    }
+
+    container sonic-bfd {
+
+        container BFD_PEER_SINGLE_HOP {
+            list BFD_PEER_SINGLE_HOP_LIST {
+                key "peer_address";
+                uses bfd-peer-common;
+            }
+        }
+
+        container BFD_PEER_MULTI_HOP {
+            list BFD_PEER_MULTI_HOP_LIST {
+                key "peer_address";
+                uses bfd-peer-common;
+            }
+        }
+
+    }
+}

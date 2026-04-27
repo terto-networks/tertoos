@@ -219,6 +219,7 @@ yang_files = [
     'sonic-fast-linkup.yang',
     'tertoos-acl.yang',
     'tertoos-banner-extensions.yang',
+    'tertoos-bfd-extensions.yang',
     'tertoos-evpn.yang',
     'tertoos-l2vpn.yang',
     'tertoos-line-vty.yang',
