@@ -55,6 +55,59 @@ module tertoos-l2vpn {
             }
         }
 
+        container L2VPN_BRIDGE_DOMAIN {
+            description "VPLS bridge-domain (S11.x).";
+            list L2VPN_BRIDGE_DOMAIN_LIST {
+                key "name";
+                leaf name { type string { length "1..64"; } }
+                leaf description              { type string; }
+                leaf mac_aging                { type uint32; }
+                leaf mac_limit                { type uint32; }
+                leaf flooding_unknown_unicast { type boolean; }
+                leaf flooding_broadcast       { type boolean; }
+                leaf vfi_name                 { type string; }
+            }
+        }
+
+        container L2VPN_VFI {
+            description "VFI (Virtual Forwarding Instance) for VPLS.";
+            list L2VPN_VFI_LIST {
+                key "name";
+                leaf name { type string { length "1..64"; } }
+                leaf vpn_id           { type uint32; }
+                leaf pw_class         { type string; }
+                leaf manual_signaling { type boolean; }
+                leaf autodiscovery_bgp { type boolean; }
+                leaf route_distinguisher { type string; }
+                leaf-list route_target_import { type string; }
+                leaf-list route_target_export { type string; }
+            }
+        }
+
+        container L2VPN_BD_AC {
+            description "Attachment circuits per bridge-domain (membership-only).";
+            list L2VPN_BD_AC_LIST {
+                key "bd_name interface";
+                leaf bd_name { type string; }
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel|Vlan|Loopback)[0-9]+(\\.[0-9]+)?';
+                    }
+                }
+            }
+        }
+
+        container L2VPN_BD_NEIGHBOR {
+            description "Per-peer pseudowire entries within a manual VFI.";
+            list L2VPN_BD_NEIGHBOR_LIST {
+                key "vfi_name peer_address";
+                leaf vfi_name     { type string; }
+                leaf peer_address { type inet:ip-address; }
+                leaf pw_id        { type uint32 { range "1..4294967295"; } }
+                leaf pw_class     { type string; }
+            }
+        }
+
         container L2VPN_XCONNECT_GROUP {
             description
                 "Each entry is one p2p pseudowire (group/p2p tuple).

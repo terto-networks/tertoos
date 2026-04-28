@@ -1,0 +1,73 @@
+{# ------------------------------------------------------------------ #}
+{# L2VPN BRIDGE-DOMAIN + VFI + AC + NEIGHBOR (S11.x)                  #}
+{# ------------------------------------------------------------------ #}
+{% if L2VPN_BRIDGE_DOMAIN is defined and L2VPN_BRIDGE_DOMAIN|length > 0 %}
+{% for bdname, bd in L2VPN_BRIDGE_DOMAIN.items() %}
+!
+l2vpn {{ bdname }} type vpls
+{% if 'description' in bd %}
+  description {{ bd['description'] }}
+{% endif %}
+{% if 'mac_aging' in bd %}
+  mac aging {{ bd['mac_aging'] }}
+{% endif %}
+{% if 'mac_limit' in bd %}
+  mac limit {{ bd['mac_limit'] }}
+{% endif %}
+{% if 'flooding_unknown_unicast' in bd and bd['flooding_unknown_unicast'] == 'false' %}
+  no flooding unknown-unicast
+{% endif %}
+{% if 'flooding_broadcast' in bd and bd['flooding_broadcast'] == 'false' %}
+  no flooding broadcast
+{% endif %}
+{% if 'vfi_name' in bd %}
+  vfi {{ bd['vfi_name'] }}
+{% endif %}
+{# Attachment circuits #}
+{% if L2VPN_BD_AC is defined %}
+{% for ackey in L2VPN_BD_AC %}
+{% if ackey[0] == bdname %}
+  member interface {{ ackey[1] }}
+{% endif %}
+{% endfor %}
+{% endif %}
+exit
+{% endfor %}
+{% endif %}
+
+{# VFI standalone blocks (FRR ldpd accepts vfi within or out of l2vpn) #}
+{% if L2VPN_VFI is defined and L2VPN_VFI|length > 0 %}
+{% for vfiname, vfi in L2VPN_VFI.items() %}
+!
+vfi {{ vfiname }}
+{% if 'vpn_id' in vfi %}
+  vpn-id {{ vfi['vpn_id'] }}
+{% endif %}
+{% if 'pw_class' in vfi %}
+  pw-class {{ vfi['pw_class'] }}
+{% endif %}
+{% if 'manual_signaling' in vfi and vfi['manual_signaling'] == 'true' %}
+  signaling ldp
+{% endif %}
+{% if 'autodiscovery_bgp' in vfi and vfi['autodiscovery_bgp'] == 'true' %}
+  autodiscovery bgp signaling ldp
+{% endif %}
+{% if 'route_distinguisher' in vfi %}
+  rd {{ vfi['route_distinguisher'] }}
+{% endif %}
+{% if L2VPN_BD_NEIGHBOR is defined %}
+{% for nkey, nbr in L2VPN_BD_NEIGHBOR.items() %}
+{% if nkey[0] == vfiname %}
+{% set peer = nkey[1] %}
+{% if 'pw_id' in nbr %}
+  neighbor {{ peer }} pw-id {{ nbr['pw_id'] }}
+{% endif %}
+{% if 'pw_class' in nbr %}
+  neighbor {{ peer }} pw-class {{ nbr['pw_class'] }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+exit
+{% endfor %}
+{% endif %}

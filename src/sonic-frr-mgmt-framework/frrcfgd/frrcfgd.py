@@ -132,6 +132,12 @@ class BgpdClientMgr(threading.Thread):
             # TertoOS S11 — L2VPN VPWS. Schema em tertoos-l2vpn.yang.
             'L2VPN_PW_CLASS': ['ldpd'],
             'L2VPN_XCONNECT_GROUP': ['ldpd'],
+            # TertoOS S11.x — VPLS bridge-domain + VFI + EVPN-MPLS.
+            'L2VPN_BRIDGE_DOMAIN': ['ldpd'],
+            'L2VPN_VFI':           ['ldpd'],
+            'L2VPN_BD_AC':         ['ldpd'],
+            'L2VPN_BD_NEIGHBOR':   ['ldpd'],
+            'EVPN_GLOBALS':        ['bgpd'],
             # TertoOS S6.1 — OSPFv3. Schema em tertoos-ospfv3.yang.
             'OSPFV3_ROUTER':                  ['ospf6d'],
             'OSPFV3_ROUTER_AREA':             ['ospf6d'],
@@ -2233,6 +2239,37 @@ class BGPConfigDaemon:
         ('keepalive', '{no:no-prefix}neighbor {} keepalive {}'),
     ]
 
+    # TertoOS S11.x — VPLS bridge-domain / VFI key_maps.
+    l2vpn_bd_key_map = [
+        ('description',                '{no:no-prefix}description {}'),
+        ('mac_aging',                  '{no:no-prefix}mac aging {}'),
+        ('mac_limit',                  '{no:no-prefix}mac limit {}'),
+        ('flooding_unknown_unicast',   '{no:no-prefix}flooding unknown-unicast', ['true','false']),
+        ('flooding_broadcast',         '{no:no-prefix}flooding broadcast', ['true','false']),
+        ('vfi_name',                   '{no:no-prefix}vfi {}'),
+    ]
+
+    l2vpn_vfi_key_map = [
+        ('vpn_id',              '{no:no-prefix}vpn-id {}'),
+        ('pw_class',            '{no:no-prefix}pw-class {}'),
+        ('manual_signaling',    '{no:no-prefix}signaling ldp', ['true','false']),
+        ('autodiscovery_bgp',   '{no:no-prefix}autodiscovery bgp signaling ldp',
+                                ['true','false']),
+        ('route_distinguisher', '{no:no-prefix}rd {}'),
+    ]
+
+    l2vpn_bd_neighbor_key_map = [
+        ('pw_id',    '{no:no-prefix}neighbor {} pw-id {}'),
+        ('pw_class', '{no:no-prefix}neighbor {} pw-class {}'),
+    ]
+
+    evpn_globals_key_map = [
+        ('default_encapsulation',    '{no:no-prefix}encapsulation {}'),
+        ('advertise_mpls_labels',    '{no:no-prefix}advertise mpls-labels', ['true','false']),
+        ('mpls_label_block_start',   '{no:no-prefix}mpls label-block start {}'),
+        ('mpls_label_block_end',     '{no:no-prefix}mpls label-block end {}'),
+    ]
+
     ospfv3_interface_key_map = [
         ('area-id',                    '{}ipv6 ospf6 area {}', handle_ospf6_if_common),
         ('cost',                       '{}ipv6 ospf6 cost {}', handle_ospf6_if_common),
@@ -2337,6 +2374,10 @@ class BGPConfigDaemon:
                       'MPLS_LDP_ROUTER':                mpls_ldp_router_key_map,
                       'MPLS_LDP_AF':                    mpls_ldp_af_key_map,
                       'MPLS_LDP_NEIGHBOR':              mpls_ldp_neighbor_key_map,
+                      'L2VPN_BRIDGE_DOMAIN':            l2vpn_bd_key_map,
+                      'L2VPN_VFI':                      l2vpn_vfi_key_map,
+                      'L2VPN_BD_NEIGHBOR':              l2vpn_bd_neighbor_key_map,
+                      'EVPN_GLOBALS':                   evpn_globals_key_map,
     }
 
     vrf_tables = {'BGP_GLOBALS', 'BGP_GLOBALS_AF',
@@ -2349,7 +2390,8 @@ class BGPConfigDaemon:
                   'OSPFV3_ROUTER_DISTRIBUTE_ROUTE',
                   'OSPFV3_ROUTER_PASSIVE_INTERFACE',
                   'MPLS_LDP_ROUTER', 'MPLS_LDP_AF',
-                  'MPLS_LDP_INTERFACE', 'MPLS_LDP_NEIGHBOR'}
+                  'MPLS_LDP_INTERFACE', 'MPLS_LDP_NEIGHBOR',
+                  'EVPN_GLOBALS'}
 
     @staticmethod
     def __peer_is_ip(peer):
@@ -2561,6 +2603,11 @@ class BGPConfigDaemon:
             ('MPLS_LDP_AF', self.bgp_table_handler_common),
             ('MPLS_LDP_INTERFACE', self.bgp_table_handler_common),
             ('MPLS_LDP_NEIGHBOR', self.bgp_table_handler_common),
+            ('L2VPN_BRIDGE_DOMAIN', self.bgp_table_handler_common),
+            ('L2VPN_VFI', self.bgp_table_handler_common),
+            ('L2VPN_BD_AC', self.bgp_table_handler_common),
+            ('L2VPN_BD_NEIGHBOR', self.bgp_table_handler_common),
+            ('EVPN_GLOBALS', self.bgp_table_handler_common),
         ]
         self.bgp_message = queue.Queue(0)
         self.table_data_cache = self.config_db.get_table_data([tbl for tbl, _ in self.table_handler_list])
@@ -4009,6 +4056,54 @@ class BGPConfigDaemon:
                 cmd_prefix.append('address-family {}'.format(af))
                 if not key_map.run_command(self, table, data, cmd_prefix, peer):
                     syslog.syslog(syslog.LOG_ERR, 'failed running mpls ldp neighbor command')
+                    continue
+            # TertoOS S11.x — VPLS bridge-domain / VFI / EVPN-MPLS branches.
+            elif table == 'L2VPN_BRIDGE_DOMAIN':
+                bd = key
+                if not del_table:
+                    cmd_prefix = ['configure terminal',
+                                  'l2vpn {} type vpls'.format(bd)]
+                    if not key_map.run_command(self, table, data, cmd_prefix):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running l2vpn bd command')
+                        continue
+                else:
+                    command = "vtysh -c 'configure terminal' -c 'no l2vpn {}'".format(bd)
+                    self.__run_command(table, command)
+            elif table == 'L2VPN_VFI':
+                vfi = key
+                # FRR ldpd: VFI vive sob l2vpn <bd>; standalone vfi config
+                # via `vfi <name>` em ldpd. Nesta fatia render direto.
+                cmd_prefix = ['configure terminal', 'vfi {}'.format(vfi)]
+                if not key_map.run_command(self, table, data, cmd_prefix):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running vfi command')
+                    continue
+            elif table == 'L2VPN_BD_AC':
+                # key formato: <bd>|<if>; membership-only
+                keyvals = key.split('|')
+                if len(keyvals) != 2:
+                    continue
+                bd, ifname = keyvals[0], keyvals[1]
+                no_op = 'no ' if del_table else ''
+                command = ("vtysh -c 'configure terminal' -c 'l2vpn {} type vpls' "
+                           "-c '{}member interface {}'").format(bd, no_op, ifname)
+                self.__run_command(table, command)
+            elif table == 'L2VPN_BD_NEIGHBOR':
+                keyvals = key.split('|')
+                if len(keyvals) != 2:
+                    continue
+                vfi, peer = keyvals[0], keyvals[1]
+                cmd_prefix = ['configure terminal', 'vfi {}'.format(vfi)]
+                if not key_map.run_command(self, table, data, cmd_prefix, peer):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running vfi neighbor command')
+                    continue
+            elif table == 'EVPN_GLOBALS':
+                vrf = prefix
+                router = 'router bgp' if vrf == 'default' \
+                         else 'router bgp vrf {}'.format(vrf)
+                cmd_prefix = ['configure terminal', router,
+                              'address-family l2vpn evpn']
+                if not key_map.run_command(self, table, data, cmd_prefix):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running evpn globals command')
                     continue
             # TertoOS S6.1 — OSPFv3 branches.
             elif table == 'OSPFV3_ROUTER':

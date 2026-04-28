@@ -106,5 +106,25 @@ module tertoos-evpn {
             }
         }
 
+        container EVPN_GLOBALS {
+            description
+                "Per-VRF EVPN-MPLS readiness flags (S11.x #37).
+                 Forwarding gating SAI MPLS data-plane (Centec lab).";
+            list EVPN_GLOBALS_LIST {
+                key "vrf_name";
+                leaf vrf_name { type string; }
+                leaf default_encapsulation {
+                    type enumeration {
+                        enum vxlan;
+                        enum mpls;
+                    }
+                    default vxlan;
+                }
+                leaf advertise_mpls_labels  { type boolean; }
+                leaf mpls_label_block_start { type uint32 { range "16..1048575"; } }
+                leaf mpls_label_block_end   { type uint32 { range "16..1048575"; } }
+            }
+        }
+
     }
 }
