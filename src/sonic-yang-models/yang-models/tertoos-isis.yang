@@ -1,0 +1,172 @@
+module tertoos-isis {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-isis";
+    prefix tos_isis;
+
+    import ietf-inet-types { prefix inet; }
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS IS-IS schema (S5). Cobre IS-IS L1/L2 + SR readiness
+         control-plane (#17, #18). FRR isisd backend.
+
+         Tabelas:
+           ISIS_INSTANCE     -- per-VRF, per-area-tag instance config.
+           ISIS_AF           -- per-instance, per-AF (ipv4/ipv6 unicast).
+           ISIS_REDIST       -- redistribution leaves (proto x level).
+           ISIS_INTERFACE    -- per-port attach + IS-IS adjacency leaves.
+           ISIS_PREFIX_SID   -- SR-MPLS prefix-SID map (#18 control-plane).
+
+         Forward (data-plane SR-MPLS) gating S0 SAI MPLS validation.";
+
+    revision 2026-04-28 {
+        description "Initial S5 IS-IS schema.";
+    }
+
+    typedef isis-af {
+        type enumeration {
+            enum ipv4_unicast;
+            enum ipv6_unicast;
+        }
+    }
+
+    typedef isis-level {
+        type enumeration {
+            enum level-1;
+            enum level-2;
+            enum level-1-2;
+            enum level-2-only;
+        }
+    }
+
+    typedef isis-network-type {
+        type enumeration {
+            enum broadcast;
+            enum point-to-point;
+        }
+    }
+
+    typedef isis-metric-style {
+        type enumeration {
+            enum narrow;
+            enum wide;
+            enum transition;
+        }
+    }
+
+    typedef isis-redist-proto {
+        type enumeration {
+            enum connected;
+            enum static;
+            enum bgp;
+            enum ospf;
+        }
+    }
+
+    container sonic-isis {
+
+        container ISIS_INSTANCE {
+            list ISIS_INSTANCE_LIST {
+                key "vrf_name tag";
+                leaf vrf_name {
+                    description "VRF name; 'default' for global.";
+                    type string;
+                }
+                leaf tag {
+                    description "IS-IS process tag.";
+                    type string {
+                        length "1..32";
+                    }
+                }
+                leaf net {
+                    description "Network Entity Title (NSAP).";
+                    type string {
+                        pattern '[0-9a-fA-F]{2}(\.[0-9a-fA-F]{4}){3,9}\.00';
+                    }
+                }
+                leaf is_type        { type isis-level; }
+                leaf dynamic_hostname { type boolean; }
+                leaf segment_routing  { type boolean; }
+                leaf mpls_te          { type boolean; }
+                leaf mpls_te_router_address { type inet:ipv4-address; }
+                leaf metric_style     { type isis-metric-style; }
+                leaf lsp_lifetime     { type uint16; }
+                leaf lsp_refresh_interval { type uint16; }
+                leaf area_password    { type string; }
+                leaf domain_password  { type string; }
+            }
+        }
+
+        container ISIS_AF {
+            list ISIS_AF_LIST {
+                key "vrf_name tag af";
+                leaf vrf_name { type string; }
+                leaf tag      { type string; }
+                leaf af       { type isis-af; }
+                leaf default_information_originate { type boolean; }
+                leaf segment_routing_node_sid_index { type uint32; }
+            }
+        }
+
+        container ISIS_REDIST {
+            list ISIS_REDIST_LIST {
+                key "vrf_name tag af proto level";
+                leaf vrf_name { type string; }
+                leaf tag      { type string; }
+                leaf af       { type isis-af; }
+                leaf proto    { type isis-redist-proto; }
+                leaf level    { type isis-level; }
+                leaf metric   { type uint32; }
+                leaf route_map { type string; }
+            }
+        }
+
+        container ISIS_INTERFACE {
+            list ISIS_INTERFACE_LIST {
+                key "interface";
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel|Vlan|Loopback)[0-9]+(\.[0-9]+)?';
+                    }
+                }
+                leaf instance {
+                    description "ISIS_INSTANCE tag this port participates in.";
+                    type string;
+                }
+                leaf vrf_name {
+                    description "VRF of the instance (default if global).";
+                    type string;
+                    default "default";
+                }
+                leaf circuit_type     { type isis-level; }
+                leaf network_type     { type isis-network-type; }
+                leaf hello_interval   { type uint16; }
+                leaf hello_multiplier { type uint8; }
+                leaf metric           { type uint32; }
+                leaf password         { type string; }
+                leaf password_type    {
+                    type enumeration {
+                        enum clear;
+                        enum md5;
+                    }
+                }
+                leaf bfd_enable       { type boolean; }
+                leaf passive          { type boolean; }
+            }
+        }
+
+        container ISIS_PREFIX_SID {
+            list ISIS_PREFIX_SID_LIST {
+                key "vrf_name tag prefix";
+                leaf vrf_name { type string; }
+                leaf tag      { type string; }
+                leaf prefix   { type inet:ip-prefix; }
+                leaf index        { type uint32; }
+                leaf explicit_null { type boolean; }
+                leaf no_php       { type boolean; }
+            }
+        }
+
+    }
+}
