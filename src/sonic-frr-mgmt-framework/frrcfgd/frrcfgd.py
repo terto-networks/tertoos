@@ -75,7 +75,7 @@ def extract_cmd_daemons(cmd_str):
 class BgpdClientMgr(threading.Thread):
     VTYSH_MARK = 'vtysh '
     PROXY_SERVER_ADDR = '/etc/frr/bgpd_client_sock'
-    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'pimd', 'mgmtd']
+    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'isisd', 'pimd', 'mgmtd']
     TABLE_DAEMON = {
             'DEVICE_METADATA': ['bgpd'],
             'BGP_GLOBALS': ['bgpd'],
@@ -131,7 +131,13 @@ class BgpdClientMgr(threading.Thread):
             'MPLS_LDP_NEIGHBOR': ['ldpd'],
             # TertoOS S11 — L2VPN VPWS. Schema em tertoos-l2vpn.yang.
             'L2VPN_PW_CLASS': ['ldpd'],
-            'L2VPN_XCONNECT_GROUP': ['ldpd']
+            'L2VPN_XCONNECT_GROUP': ['ldpd'],
+            # TertoOS S5.B — IS-IS. Schema em tertoos-isis.yang.
+            'ISIS_INSTANCE':    ['isisd'],
+            'ISIS_AF':          ['isisd'],
+            'ISIS_REDIST':      ['isisd'],
+            'ISIS_INTERFACE':   ['isisd', 'zebra'],
+            'ISIS_PREFIX_SID':  ['isisd']
 
     }
     VTYSH_CMD_DAEMON = [(r'show (ip|ipv6) route($|\s+\S+)', ['zebra']),
@@ -144,6 +150,8 @@ class BgpdClientMgr(threading.Thread):
                         (r'show ip pim($|\s+\S+)', ['pimd']),
                         (r'show ip igmp($|\s+\S+)', ['pimd']),
                         (r'clear ip ospf($|\s+\S+)', ['ospfd']),
+                        (r'show isis($|\s+\S+)', ['isisd']),
+                        (r'clear isis($|\s+\S+)', ['isisd']),
                         (r'show ip sla($|\s+\S+)', ['iptrackd']),
                         (r'clear ip sla($|\s+\S+)', ['iptrackd']),
                         (r'clear ip igmp($|\s+\S+)', ['pimd']),
@@ -1228,6 +1236,46 @@ def handle_ospf_if_nwtype(daemon, cmd_str, op, st_idx, args, data):
                                    CommandArgument(daemon, True, nwtype)))
     return cmd_list
 
+# TertoOS S5.B — IS-IS handlers.
+# args layout for handlers below depends on cmd_prefix args passed in
+# the special branch in __update_bgp (see ISIS_INTERFACE / ISIS_REDIST /
+# ISIS_PREFIX_SID branches).
+def handle_isis_redist(daemon, cmd_str, op, st_idx, args, data):
+    cmd_list = []
+    no_op = 'no ' if op == CachedDataWithOp.OP_DELETE else ''
+    proto = args[0]
+    level = args[1]
+    leaf_val = args[2]
+    syslog.syslog(syslog.LOG_INFO,
+                  'handle_isis_redist cmd_str {} op {} args {} data {}'.format(
+                      cmd_str, op, args, data))
+    cmd_list.append(cmd_str.format(CommandArgument(daemon, True, no_op),
+                                   CommandArgument(daemon, True, proto),
+                                   CommandArgument(daemon, True, level),
+                                   CommandArgument(daemon, True, leaf_val)))
+    return cmd_list
+
+def handle_isis_if_password(daemon, cmd_str, op, st_idx, args, data):
+    cmd_list = []
+    no_op = 'no ' if op == CachedDataWithOp.OP_DELETE else ''
+    pwd_type = data.get('password_type')
+    pwd_type = pwd_type.data if pwd_type is not None else 'clear'
+    pwd_val = args[0]
+    cmd_list.append(cmd_str.format(CommandArgument(daemon, True, no_op),
+                                   CommandArgument(daemon, True, pwd_type),
+                                   CommandArgument(daemon, True, pwd_val)))
+    return cmd_list
+
+def handle_isis_prefix_sid(daemon, cmd_str, op, st_idx, args, data):
+    cmd_list = []
+    no_op = 'no ' if op == CachedDataWithOp.OP_DELETE else ''
+    prefix = args[0]
+    leaf_val = args[1]
+    cmd_list.append(cmd_str.format(CommandArgument(daemon, True, no_op),
+                                   CommandArgument(daemon, True, prefix),
+                                   CommandArgument(daemon, True, leaf_val)))
+    return cmd_list
+
 def handle_igmp_if_common(daemon, cmd_str, op, st_idx, args, data):
     if len(args) != 1:
         return None
@@ -2056,6 +2104,54 @@ class BGPConfigDaemon:
                              ('retransmission-interval', '{}ip ospf retransmit-interval {} {}', handle_ospf_if_common),
                              ('transmit-delay', '{}ip ospf transmit-delay {} {}', handle_ospf_if_common),
                            ]
+
+    # TertoOS S5.B — IS-IS key_maps.
+    isis_instance_key_map = [
+        ('net',                   '{no:no-prefix}net {}'),
+        ('is_type',               '{no:no-prefix}is-type {}'),
+        ('dynamic_hostname',      '{no:no-prefix}dynamic-hostname', ['true','false']),
+        ('segment_routing',       '{no:no-prefix}segment-routing on', ['on','off']),
+        ('mpls_te',               '{no:no-prefix}mpls-te on', ['on','off']),
+        ('mpls_te_router_address','{no:no-prefix}mpls-te router-address {}'),
+        ('metric_style',          '{no:no-prefix}metric-style {}'),
+        ('lsp_lifetime',          '{no:no-prefix}lsp-lifetime {}'),
+        ('lsp_refresh_interval',  '{no:no-prefix}lsp-refresh-interval {}'),
+        ('area_password',         '{no:no-prefix}area-password {}'),
+        ('domain_password',       '{no:no-prefix}domain-password {}'),
+    ]
+
+    isis_af_key_map = [
+        ('default_information_originate',
+            '{no:no-prefix}default-information originate', ['true','false']),
+        ('segment_routing_node_sid_index',
+            '{no:no-prefix}segment-routing node-sid index {}'),
+    ]
+
+    isis_redist_key_map = [
+        ('metric',     '{}redistribute {} {} metric {}', handle_isis_redist),
+        ('route_map',  '{}redistribute {} {} route-map {}', handle_isis_redist),
+    ]
+
+    isis_interface_key_map = [
+        ('instance',          '{no:no-prefix}ip router isis {}'),
+        ('circuit_type',      '{no:no-prefix}isis circuit-type {}'),
+        ('network_type',      '{no:no-prefix}isis network {}'),
+        ('hello_interval',    '{no:no-prefix}isis hello-interval {}'),
+        ('hello_multiplier',  '{no:no-prefix}isis hello-multiplier {}'),
+        ('metric',            '{no:no-prefix}isis metric {}'),
+        ('password',          '{}isis password {} {}', handle_isis_if_password),
+        ('bfd_enable',        '{no:no-prefix}isis bfd', ['true','false']),
+        ('passive',           '{no:no-prefix}isis passive', ['true','false']),
+    ]
+
+    isis_prefix_sid_key_map = [
+        ('index',         '{}segment-routing prefix-sid-map {} {}', handle_isis_prefix_sid),
+        ('explicit_null', '{no:no-prefix}segment-routing prefix-sid-map {} explicit-null',
+                          ['true','false']),
+        ('no_php',        '{no:no-prefix}segment-routing prefix-sid-map {} no-php-flag',
+                          ['true','false']),
+    ]
+
     static_route_map = [(['ip_prefix|ipv4', '++blackhole', '++nexthop', '++ifname', '++track', '++tag', '++distance', '++nexthop-vrf'],
                          '{no:no-prefix}ip route {} {:blackhole} {} {} {:track} {:nh-tag} {} {:nh-vrf}', hdl_static_route, socket.AF_INET),
                         (['ip_prefix|ipv6', '++blackhole', '++nexthop', '++ifname', '++track', '++tag', '++distance', '++nexthop-vrf'],
@@ -2135,13 +2231,19 @@ class BGPConfigDaemon:
                       'PIM_INTERFACE':                  pim_interface_key_map,
                       'IGMP_INTERFACE':                 igmp_mcast_grp_key_map,
                       'IGMP_INTERFACE_QUERY':           igmp_interface_config_key_map,
+                      'ISIS_INSTANCE':                  isis_instance_key_map,
+                      'ISIS_AF':                        isis_af_key_map,
+                      'ISIS_REDIST':                    isis_redist_key_map,
+                      'ISIS_INTERFACE':                 isis_interface_key_map,
+                      'ISIS_PREFIX_SID':                isis_prefix_sid_key_map,
     }
 
     vrf_tables = {'BGP_GLOBALS', 'BGP_GLOBALS_AF',
                   'BGP_NEIGHBOR', 'BGP_PEER_GROUP', 'BGP_NEIGHBOR_AF', 'BGP_PEER_GROUP_AF',
                   'BGP_GLOBALS_LISTEN_PREFIX', 'ROUTE_REDISTRIBUTE',
                   'BGP_GLOBALS_AF_AGGREGATE_ADDR', 'BGP_GLOBALS_AF_NETWORK',
-                  'BGP_GLOBALS_EVPN_RT', 'BGP_GLOBALS_EVPN_VNI', 'BGP_GLOBALS_EVPN_VNI_RT'}
+                  'BGP_GLOBALS_EVPN_RT', 'BGP_GLOBALS_EVPN_VNI', 'BGP_GLOBALS_EVPN_VNI_RT',
+                  'ISIS_INSTANCE', 'ISIS_AF', 'ISIS_REDIST', 'ISIS_PREFIX_SID'}
 
     @staticmethod
     def __peer_is_ip(peer):
@@ -2339,6 +2441,11 @@ class BGPConfigDaemon:
             ('SRV6_MY_LOCATORS', self.bgp_table_handler_common),
             ('SRV6_MY_SOURCE', self.bgp_table_handler_common),
             ('SRV6_MY_SIDS', self.bgp_table_handler_common),
+            ('ISIS_INSTANCE', self.bgp_table_handler_common),
+            ('ISIS_AF', self.bgp_table_handler_common),
+            ('ISIS_REDIST', self.bgp_table_handler_common),
+            ('ISIS_INTERFACE', self.bgp_table_handler_common),
+            ('ISIS_PREFIX_SID', self.bgp_table_handler_common),
         ]
         self.bgp_message = queue.Queue(0)
         self.table_data_cache = self.config_db.get_table_data([tbl for tbl, _ in self.table_handler_list])
@@ -3735,6 +3842,85 @@ class BGPConfigDaemon:
                             syslog.syslog(syslog.LOG_ERR, 'failed to delete passive interface {} {}'.format(if_name, if_addr))
                             continue
 
+            # TertoOS S5.B — IS-IS branches.
+            elif table == 'ISIS_INSTANCE':
+                vrf = prefix
+                tag = key
+                syslog.syslog(syslog.LOG_INFO,
+                              'IS-IS instance update vrf {} tag {} del {}'.format(vrf, tag, del_table))
+                if not del_table:
+                    if vrf == 'default':
+                        cmd_prefix = ['configure terminal',
+                                      'router isis {}'.format(tag)]
+                    else:
+                        cmd_prefix = ['configure terminal',
+                                      'router isis {} vrf {}'.format(tag, vrf)]
+                    if not key_map.run_command(self, table, data, cmd_prefix):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running isis config command')
+                        continue
+                else:
+                    if vrf == 'default':
+                        command = "vtysh -c 'configure terminal' -c 'no router isis {}'".format(tag)
+                    else:
+                        command = "vtysh -c 'configure terminal' -c 'no router isis {} vrf {}'".format(tag, vrf)
+                    self.__run_command(table, command)
+            elif table == 'ISIS_AF':
+                vrf = prefix
+                keyvals = key.split('|')
+                tag = keyvals[0]
+                af = keyvals[1]
+                af_str = 'ipv4 unicast' if af == 'ipv4_unicast' else 'ipv6 unicast'
+                router = 'router isis {}'.format(tag) if vrf == 'default' \
+                         else 'router isis {} vrf {}'.format(tag, vrf)
+                cmd_prefix = ['configure terminal', router,
+                              'address-family {}'.format(af_str)]
+                if not key_map.run_command(self, table, data, cmd_prefix):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running isis-af config command')
+                    continue
+            elif table == 'ISIS_REDIST':
+                vrf = prefix
+                keyvals = key.split('|')
+                tag = keyvals[0]
+                # af not used directly — FRR isisd accepts redistribute
+                # under address-family of router-isis.
+                af = keyvals[1]
+                proto = keyvals[2]
+                level = keyvals[3]
+                af_str = 'ipv4 unicast' if af == 'ipv4_unicast' else 'ipv6 unicast'
+                router = 'router isis {}'.format(tag) if vrf == 'default' \
+                         else 'router isis {} vrf {}'.format(tag, vrf)
+                cmd_prefix = ['configure terminal', router,
+                              'address-family {}'.format(af_str)]
+                if data == {}:
+                    no_op = 'no ' if del_table else ''
+                    cmd = "{}redistribute {} {}".format(no_op, proto, level)
+                    full = "vtysh -c '{}' -c '{}' -c '{}' -c '{}'".format(
+                        cmd_prefix[0], cmd_prefix[1], cmd_prefix[2], cmd)
+                    if not self.__run_command(table, full):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running isis redistribute baseline')
+                        continue
+                else:
+                    if not key_map.run_command(self, table, data, cmd_prefix, proto, level):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running isis redistribute leaves')
+                        continue
+            elif table == 'ISIS_INTERFACE':
+                ifname = key
+                cmd_prefix = ['configure terminal', 'interface {}'.format(ifname)]
+                syslog.syslog(syslog.LOG_INFO, 'IS-IS interface update {}'.format(ifname))
+                if not key_map.run_command(self, table, data, cmd_prefix):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running isis interface command')
+                    continue
+            elif table == 'ISIS_PREFIX_SID':
+                vrf = prefix
+                keyvals = key.split('|')
+                tag = keyvals[0]
+                pfx = keyvals[1]
+                router = 'router isis {}'.format(tag) if vrf == 'default' \
+                         else 'router isis {} vrf {}'.format(tag, vrf)
+                cmd_prefix = ['configure terminal', router]
+                if not key_map.run_command(self, table, data, cmd_prefix, pfx):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running isis prefix-sid command')
+                    continue
             elif table == 'STATIC_ROUTE':
                 vrf = prefix
                 syslog.syslog(syslog.LOG_INFO, 'Set static IP route for vrf {} prefix {}'.format(vrf, key))

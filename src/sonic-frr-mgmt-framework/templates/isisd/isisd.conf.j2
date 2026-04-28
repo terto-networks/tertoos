@@ -1,0 +1,6 @@
+! template: isisd/isisd.conf.j2
+!
+! IS-IS configuration rendered from CONFIG_DB ISIS_* tables (S5.B).
+!
+{% include "isisd.conf.db.instance.j2" %}
+{% include "isisd.conf.db.interface.j2" %}

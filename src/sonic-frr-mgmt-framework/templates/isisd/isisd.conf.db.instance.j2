@@ -1,0 +1,90 @@
+{# ------------------------------------------------------------------ #}
+{# ISIS_INSTANCE — `router isis <tag> [vrf <vrf>]` blocks            #}
+{# ------------------------------------------------------------------ #}
+{% if ISIS_INSTANCE is defined and ISIS_INSTANCE|length > 0 %}
+{% for instkey, inst in ISIS_INSTANCE.items() %}
+{% set vrf = instkey[0] %}
+{% set tag = instkey[1] %}
+!
+{% if vrf == 'default' %}
+router isis {{ tag }}
+{% else %}
+router isis {{ tag }} vrf {{ vrf }}
+{% endif %}
+{% if 'net' in inst %}
+  net {{ inst['net'] }}
+{% endif %}
+{% if 'is_type' in inst %}
+  is-type {{ inst['is_type'] }}
+{% endif %}
+{% if 'dynamic_hostname' in inst and inst['dynamic_hostname'] == 'true' %}
+  dynamic-hostname
+{% endif %}
+{% if 'metric_style' in inst %}
+  metric-style {{ inst['metric_style'] }}
+{% endif %}
+{% if 'lsp_lifetime' in inst %}
+  lsp-lifetime {{ inst['lsp_lifetime'] }}
+{% endif %}
+{% if 'lsp_refresh_interval' in inst %}
+  lsp-refresh-interval {{ inst['lsp_refresh_interval'] }}
+{% endif %}
+{% if 'segment_routing' in inst and inst['segment_routing'] == 'on' %}
+  segment-routing on
+{% endif %}
+{% if 'mpls_te' in inst and inst['mpls_te'] == 'on' %}
+  mpls-te on
+{% if 'mpls_te_router_address' in inst %}
+  mpls-te router-address {{ inst['mpls_te_router_address'] }}
+{% endif %}
+{% endif %}
+{% if 'area_password' in inst %}
+  area-password {{ inst['area_password'] }}
+{% endif %}
+{% if 'domain_password' in inst %}
+  domain-password {{ inst['domain_password'] }}
+{% endif %}
+{# Address-family blocks (ISIS_AF) — filtra pela mesma chave (vrf,tag). #}
+{% if ISIS_AF is defined %}
+{% for afkey, af_inst in ISIS_AF.items() %}
+{% if afkey[0] == vrf and afkey[1] == tag %}
+{% set af = afkey[2] %}
+{% if af == 'ipv4_unicast' %}
+  address-family ipv4 unicast
+{% else %}
+  address-family ipv6 unicast
+{% endif %}
+{% if 'default_information_originate' in af_inst and af_inst['default_information_originate'] == 'true' %}
+   default-information originate
+{% endif %}
+{% if 'segment_routing_node_sid_index' in af_inst %}
+   segment-routing node-sid index {{ af_inst['segment_routing_node_sid_index'] }}
+{% endif %}
+{# Redistribute leaves (ISIS_REDIST) sob este AF #}
+{% if ISIS_REDIST is defined %}
+{% for rkey, redist in ISIS_REDIST.items() %}
+{% if rkey[0] == vrf and rkey[1] == tag and rkey[2] == af %}
+{% set proto = rkey[3] %}
+{% set lvl = rkey[4] %}
+   redistribute {{ proto }} {{ lvl }}{% if 'metric' in redist %} metric {{ redist['metric'] }}{% endif %}{% if 'route_map' in redist %} route-map {{ redist['route_map'] }}{% endif %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+   exit-address-family
+{% endif %}
+{% endfor %}
+{% endif %}
+{# Prefix-SID map (ISIS_PREFIX_SID) under router-isis directly #}
+{% if ISIS_PREFIX_SID is defined %}
+{% for pkey, psid in ISIS_PREFIX_SID.items() %}
+{% if pkey[0] == vrf and pkey[1] == tag %}
+{% set pfx = pkey[2] %}
+  segment-routing prefix-sid-map {{ pfx }} {{ psid['index'] }}{% if 'explicit_null' in psid and psid['explicit_null'] == 'true' %} explicit-null{% endif %}{% if 'no_php' in psid and psid['no_php'] == 'true' %} no-php-flag{% endif %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+exit
+{% endfor %}
+{% endif %}

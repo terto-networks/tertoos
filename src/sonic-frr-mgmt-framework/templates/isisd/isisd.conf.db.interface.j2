@@ -1,0 +1,37 @@
+{# ------------------------------------------------------------------ #}
+{# ISIS_INTERFACE — per-port adjacency leaves                         #}
+{# ------------------------------------------------------------------ #}
+{% if ISIS_INTERFACE is defined and ISIS_INTERFACE|length > 0 %}
+{% for ifname, ifent in ISIS_INTERFACE.items() %}
+!
+interface {{ ifname }}
+{% if 'instance' in ifent %}
+  ip router isis {{ ifent['instance'] }}
+{% endif %}
+{% if 'circuit_type' in ifent %}
+  isis circuit-type {{ ifent['circuit_type'] }}
+{% endif %}
+{% if 'network_type' in ifent %}
+  isis network {{ ifent['network_type'] }}
+{% endif %}
+{% if 'hello_interval' in ifent %}
+  isis hello-interval {{ ifent['hello_interval'] }}
+{% endif %}
+{% if 'hello_multiplier' in ifent %}
+  isis hello-multiplier {{ ifent['hello_multiplier'] }}
+{% endif %}
+{% if 'metric' in ifent %}
+  isis metric {{ ifent['metric'] }}
+{% endif %}
+{% if 'password' in ifent %}
+  isis password {{ ifent.get('password_type', 'clear') }} {{ ifent['password'] }}
+{% endif %}
+{% if 'bfd_enable' in ifent and ifent['bfd_enable'] == 'true' %}
+  isis bfd
+{% endif %}
+{% if 'passive' in ifent and ifent['passive'] == 'true' %}
+  isis passive
+{% endif %}
+exit
+{% endfor %}
+{% endif %}
