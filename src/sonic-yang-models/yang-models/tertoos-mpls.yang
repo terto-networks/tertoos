@@ -43,6 +43,10 @@ module tertoos-mpls {
                 leaf keepalive { type uint16; }
                 leaf discovery-hello-holdtime { type uint16; }
                 leaf discovery-hello-interval { type uint16; }
+                leaf graceful_restart                   { type boolean; }
+                leaf graceful_restart_helper            { type boolean; }
+                leaf graceful_restart_reconnect_time    { type uint32; }
+                leaf graceful_restart_recovery_time     { type uint32; }
             }
         }
 

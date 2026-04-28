@@ -75,7 +75,7 @@ def extract_cmd_daemons(cmd_str):
 class BgpdClientMgr(threading.Thread):
     VTYSH_MARK = 'vtysh '
     PROXY_SERVER_ADDR = '/etc/frr/bgpd_client_sock'
-    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'ospf6d', 'isisd', 'pimd', 'mgmtd']
+    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'ospf6d', 'isisd', 'ldpd', 'pimd', 'mgmtd']
     TABLE_DAEMON = {
             'DEVICE_METADATA': ['bgpd'],
             'BGP_GLOBALS': ['bgpd'],
@@ -160,6 +160,9 @@ class BgpdClientMgr(threading.Thread):
                         (r'clear ipv6 ospf6($|\s+\S+)', ['ospf6d']),
                         (r'show isis($|\s+\S+)', ['isisd']),
                         (r'clear isis($|\s+\S+)', ['isisd']),
+                        (r'show mpls ldp($|\s+\S+)', ['ldpd']),
+                        (r'clear mpls ldp($|\s+\S+)', ['ldpd']),
+                        (r'show l2vpn($|\s+\S+)', ['ldpd']),
                         (r'show ip sla($|\s+\S+)', ['iptrackd']),
                         (r'clear ip sla($|\s+\S+)', ['iptrackd']),
                         (r'clear ip igmp($|\s+\S+)', ['pimd']),
@@ -2198,6 +2201,38 @@ class BGPConfigDaemon:
         ('export-list',       '{no:no-prefix}area {} export-list {}'),
     ]
 
+    # TertoOS S7.x — MPLS LDP key_maps (FRR ldpd).
+    mpls_ldp_router_key_map = [
+        ('enable',                              '{no:no-prefix}'),
+        ('router-id',                           '{no:no-prefix}router-id {}'),
+        ('holdtime',                            '{no:no-prefix}holdtime {}'),
+        ('keepalive',                           '{no:no-prefix}keepalive {}'),
+        ('discovery-hello-holdtime',            '{no:no-prefix}discovery hello holdtime {}'),
+        ('discovery-hello-interval',            '{no:no-prefix}discovery hello interval {}'),
+        ('graceful_restart',                    '{no:no-prefix}graceful-restart',
+                                                ['true', 'false']),
+        ('graceful_restart_helper',             '{no:no-prefix}graceful-restart helper',
+                                                ['true', 'false']),
+        ('graceful_restart_reconnect_time',     '{no:no-prefix}graceful-restart reconnect-time {}'),
+        ('graceful_restart_recovery_time',      '{no:no-prefix}graceful-restart recovery-time {}'),
+    ]
+
+    mpls_ldp_af_key_map = [
+        ('enable',                          '{no:no-prefix}'),
+        ('discovery-transport-address',     '{no:no-prefix}discovery transport-address {}'),
+        ('discovery-targeted-hello-accept', '{no:no-prefix}discovery targeted-hello accept',
+                                            ['true', 'false']),
+        ('label-local-allocate-host-only',  '{no:no-prefix}label local allocate host-routes',
+                                            ['true', 'false']),
+    ]
+
+    mpls_ldp_neighbor_key_map = [
+        ('password',  '{no:no-prefix}neighbor {} password {}'),
+        ('targeted',  '{no:no-prefix}neighbor {} targeted', ['true', 'false']),
+        ('holdtime',  '{no:no-prefix}neighbor {} holdtime {}'),
+        ('keepalive', '{no:no-prefix}neighbor {} keepalive {}'),
+    ]
+
     ospfv3_interface_key_map = [
         ('area-id',                    '{}ipv6 ospf6 area {}', handle_ospf6_if_common),
         ('cost',                       '{}ipv6 ospf6 cost {}', handle_ospf6_if_common),
@@ -2299,6 +2334,9 @@ class BGPConfigDaemon:
                       'OSPFV3_ROUTER':                  ospfv3_global_key_map,
                       'OSPFV3_ROUTER_AREA':             ospfv3_area_key_map,
                       'OSPFV3_INTERFACE':               ospfv3_interface_key_map,
+                      'MPLS_LDP_ROUTER':                mpls_ldp_router_key_map,
+                      'MPLS_LDP_AF':                    mpls_ldp_af_key_map,
+                      'MPLS_LDP_NEIGHBOR':              mpls_ldp_neighbor_key_map,
     }
 
     vrf_tables = {'BGP_GLOBALS', 'BGP_GLOBALS_AF',
@@ -2309,7 +2347,9 @@ class BGPConfigDaemon:
                   'ISIS_INSTANCE', 'ISIS_AF', 'ISIS_REDIST', 'ISIS_PREFIX_SID',
                   'OSPFV3_ROUTER', 'OSPFV3_ROUTER_AREA',
                   'OSPFV3_ROUTER_DISTRIBUTE_ROUTE',
-                  'OSPFV3_ROUTER_PASSIVE_INTERFACE'}
+                  'OSPFV3_ROUTER_PASSIVE_INTERFACE',
+                  'MPLS_LDP_ROUTER', 'MPLS_LDP_AF',
+                  'MPLS_LDP_INTERFACE', 'MPLS_LDP_NEIGHBOR'}
 
     @staticmethod
     def __peer_is_ip(peer):
@@ -2517,6 +2557,10 @@ class BGPConfigDaemon:
             ('OSPFV3_ROUTER_DISTRIBUTE_ROUTE', self.bgp_table_handler_common),
             ('OSPFV3_INTERFACE', self.bgp_table_handler_common),
             ('OSPFV3_ROUTER_PASSIVE_INTERFACE', self.bgp_table_handler_common),
+            ('MPLS_LDP_ROUTER', self.bgp_table_handler_common),
+            ('MPLS_LDP_AF', self.bgp_table_handler_common),
+            ('MPLS_LDP_INTERFACE', self.bgp_table_handler_common),
+            ('MPLS_LDP_NEIGHBOR', self.bgp_table_handler_common),
         ]
         self.bgp_message = queue.Queue(0)
         self.table_data_cache = self.config_db.get_table_data([tbl for tbl, _ in self.table_handler_list])
@@ -3913,6 +3957,59 @@ class BGPConfigDaemon:
                             syslog.syslog(syslog.LOG_ERR, 'failed to delete passive interface {} {}'.format(if_name, if_addr))
                             continue
 
+            # TertoOS S7.x — MPLS LDP branches.
+            elif table == 'MPLS_LDP_ROUTER':
+                vrf = prefix
+                if not del_table:
+                    cmd_prefix = ['configure terminal', 'mpls ldp']
+                    if vrf != 'default':
+                        cmd_prefix.append('vrf {}'.format(vrf))
+                    if not key_map.run_command(self, table, data, cmd_prefix):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running mpls ldp command')
+                        continue
+                else:
+                    command = "vtysh -c 'configure terminal' -c 'no mpls ldp'"
+                    self.__run_command(table, command)
+            elif table == 'MPLS_LDP_AF':
+                vrf = prefix
+                af = key  # 'ipv4' or 'ipv6'
+                cmd_prefix = ['configure terminal', 'mpls ldp']
+                if vrf != 'default':
+                    cmd_prefix.append('vrf {}'.format(vrf))
+                cmd_prefix.append('address-family {}'.format(af))
+                if not key_map.run_command(self, table, data, cmd_prefix):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running mpls ldp af command')
+                    continue
+            elif table == 'MPLS_LDP_INTERFACE':
+                # key formato: <af>|<if>; membership-only
+                vrf = prefix
+                keyvals = key.split('|')
+                if len(keyvals) != 2:
+                    continue
+                af, ifname = keyvals[0], keyvals[1]
+                no_op = 'no ' if del_table else ''
+                cmd_parts = ['configure terminal', 'mpls ldp']
+                if vrf != 'default':
+                    cmd_parts.append('vrf {}'.format(vrf))
+                cmd_parts.append('address-family {}'.format(af))
+                cmd_parts.append('{}interface {}'.format(no_op, ifname))
+                command = "vtysh"
+                for c in cmd_parts:
+                    command += " -c '{}'".format(c)
+                self.__run_command(table, command)
+            elif table == 'MPLS_LDP_NEIGHBOR':
+                vrf = prefix
+                keyvals = key.split('|')
+                if len(keyvals) != 2:
+                    continue
+                af, peer = keyvals[0], keyvals[1]
+                cmd_prefix = ['configure terminal', 'mpls ldp']
+                if vrf != 'default':
+                    cmd_prefix.append('vrf {}'.format(vrf))
+                cmd_prefix.append('address-family {}'.format(af))
+                if not key_map.run_command(self, table, data, cmd_prefix, peer):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running mpls ldp neighbor command')
+                    continue
             # TertoOS S6.1 — OSPFv3 branches.
             elif table == 'OSPFV3_ROUTER':
                 vrf = prefix

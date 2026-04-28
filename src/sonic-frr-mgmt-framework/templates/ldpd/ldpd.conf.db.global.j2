@@ -1,0 +1,41 @@
+{# ------------------------------------------------------------------ #}
+{# MPLS_LDP_ROUTER — `mpls ldp [vrf <vrf>]` block + GR + timers       #}
+{# ------------------------------------------------------------------ #}
+{% if MPLS_LDP_ROUTER is defined and MPLS_LDP_ROUTER|length > 0 %}
+{% for vrf, ldp in MPLS_LDP_ROUTER.items() %}
+!
+{% if vrf == 'default' %}
+mpls ldp
+{% else %}
+mpls ldp vrf {{ vrf }}
+{% endif %}
+{% if 'router-id' in ldp %}
+  router-id {{ ldp['router-id'] }}
+{% endif %}
+{% if 'holdtime' in ldp %}
+  holdtime {{ ldp['holdtime'] }}
+{% endif %}
+{% if 'keepalive' in ldp %}
+  keepalive {{ ldp['keepalive'] }}
+{% endif %}
+{% if 'discovery-hello-holdtime' in ldp %}
+  discovery hello holdtime {{ ldp['discovery-hello-holdtime'] }}
+{% endif %}
+{% if 'discovery-hello-interval' in ldp %}
+  discovery hello interval {{ ldp['discovery-hello-interval'] }}
+{% endif %}
+{% if 'graceful_restart' in ldp and ldp['graceful_restart'] == 'true' %}
+  graceful-restart
+{% endif %}
+{% if 'graceful_restart_helper' in ldp and ldp['graceful_restart_helper'] == 'true' %}
+  graceful-restart helper
+{% endif %}
+{% if 'graceful_restart_reconnect_time' in ldp %}
+  graceful-restart reconnect-time {{ ldp['graceful_restart_reconnect_time'] }}
+{% endif %}
+{% if 'graceful_restart_recovery_time' in ldp %}
+  graceful-restart recovery-time {{ ldp['graceful_restart_recovery_time'] }}
+{% endif %}
+exit
+{% endfor %}
+{% endif %}

@@ -1,0 +1,56 @@
+{# ------------------------------------------------------------------ #}
+{# MPLS_LDP_AF + INTERFACE + NEIGHBOR — per-AF blocks                 #}
+{# Re-entra `mpls ldp [vrf]` para cada AF; ldpd FRR aceita reentrada  #}
+{# ------------------------------------------------------------------ #}
+{% if MPLS_LDP_AF is defined and MPLS_LDP_AF|length > 0 %}
+{% for afkey, af in MPLS_LDP_AF.items() %}
+{% set vrf = afkey[0] %}
+{% set afi = afkey[1] %}
+!
+{% if vrf == 'default' %}
+mpls ldp
+{% else %}
+mpls ldp vrf {{ vrf }}
+{% endif %}
+ address-family {{ afi }}
+{% if 'discovery-transport-address' in af %}
+  discovery transport-address {{ af['discovery-transport-address'] }}
+{% endif %}
+{% if 'discovery-targeted-hello-accept' in af and af['discovery-targeted-hello-accept'] == 'true' %}
+  discovery targeted-hello accept
+{% endif %}
+{% if 'label-local-allocate-host-only' in af and af['label-local-allocate-host-only'] == 'true' %}
+  label local allocate host-routes
+{% endif %}
+{# Interface members under this AF #}
+{% if MPLS_LDP_INTERFACE is defined %}
+{% for ifkey in MPLS_LDP_INTERFACE %}
+{% if ifkey[0] == vrf and ifkey[1] == afi %}
+  interface {{ ifkey[2] }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{# Neighbor entries under this AF #}
+{% if MPLS_LDP_NEIGHBOR is defined %}
+{% for nkey, nbr in MPLS_LDP_NEIGHBOR.items() %}
+{% if nkey[0] == vrf and nkey[1] == afi %}
+{% set peer = nkey[2] %}
+{% if 'password' in nbr %}
+  neighbor {{ peer }} password {{ nbr['password'] }}
+{% endif %}
+{% if 'targeted' in nbr and nbr['targeted'] == 'true' %}
+  neighbor {{ peer }} targeted
+{% endif %}
+{% if 'holdtime' in nbr %}
+  neighbor {{ peer }} holdtime {{ nbr['holdtime'] }}
+{% endif %}
+{% if 'keepalive' in nbr %}
+  neighbor {{ peer }} keepalive {{ nbr['keepalive'] }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+ exit-address-family
+exit
+{% endfor %}
+{% endif %}
