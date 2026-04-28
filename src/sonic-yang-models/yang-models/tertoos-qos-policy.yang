@@ -1,0 +1,96 @@
+module tertoos-qos-policy {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-qos-policy";
+    prefix tos_qpol;
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS class-map / policy-map / service-policy schema (S12.B.3).
+
+         SONiC upstream não tem composição class-map/policy-map ao
+         estilo IOS-XR. Este módulo formaliza o contrato no fork.
+
+         Tabelas:
+           TERTOOS_CLASS_MAP            -- match expression (DSCP/cos/ACL).
+           TERTOOS_POLICY_MAP           -- shell de policy.
+           TERTOOS_POLICY_MAP_CLASS     -- class entries com set/police.
+           TERTOOS_PORT_SERVICE_POLICY  -- per-port input/output bind.
+
+         O compilador runtime tertoos-qoscompd (S12.B.4) consome
+         estas tabelas e renderiza para ACL_RULE / POLICER /
+         WRED_PROFILE refs / PORT_QOS_MAP nas tabelas SONiC nativas.
+         Sem o daemon, os dados ficam em CONFIG_DB válidos mas SAI
+         não é programado.";
+
+    revision 2026-04-28 {
+        description "Initial S12.B.3 schema.";
+    }
+
+    typedef qos_match_type {
+        type enumeration { enum qos; enum traffic; }
+    }
+    typedef qos_match_op {
+        type enumeration { enum any; enum all; }
+    }
+    typedef qos_policy_type {
+        type enumeration { enum qos; enum traffic; }
+    }
+
+    container sonic-tertoos-qos-policy {
+
+        container TERTOOS_CLASS_MAP {
+            list TERTOOS_CLASS_MAP_LIST {
+                key "name";
+                leaf name {
+                    type string { length "1..64"; }
+                }
+                leaf match_type            { type qos_match_type; default qos; }
+                leaf operator              { type qos_match_op;   default any; }
+                leaf-list match_dscp       { type uint8 { range "0..63"; } }
+                leaf-list match_precedence { type uint8 { range "0..7"; } }
+                leaf-list match_cos        { type uint8 { range "0..7"; } }
+                leaf-list match_traffic_class { type uint8 { range "0..7"; } }
+                leaf match_access_group_v4 { type string; }
+                leaf match_access_group_v6 { type string; }
+            }
+        }
+
+        container TERTOOS_POLICY_MAP {
+            list TERTOOS_POLICY_MAP_LIST {
+                key "name";
+                leaf name        { type string { length "1..64"; } }
+                leaf policy_type { type qos_policy_type; default qos; }
+            }
+        }
+
+        container TERTOOS_POLICY_MAP_CLASS {
+            list TERTOOS_POLICY_MAP_CLASS_LIST {
+                key "policy_name class_name";
+                leaf policy_name { type string; }
+                leaf class_name  { type string; }
+                leaf set_traffic_class { type uint8 { range "0..7"; } }
+                leaf set_dscp          { type uint8 { range "0..63"; } }
+                leaf set_precedence    { type uint8 { range "0..7"; } }
+                leaf police_name       { type string; }
+                leaf queue_index       { type uint8 { range "0..7"; } }
+                leaf wred_profile      { type string; }
+                leaf parent_class      { type string; }
+            }
+        }
+
+        container TERTOOS_PORT_SERVICE_POLICY {
+            list TERTOOS_PORT_SERVICE_POLICY_LIST {
+                key "interface";
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel|Vlan|Loopback)[0-9]+(\.[0-9]+)?';
+                    }
+                }
+                leaf input_policy  { type string; }
+                leaf output_policy { type string; }
+            }
+        }
+
+    }
+}
