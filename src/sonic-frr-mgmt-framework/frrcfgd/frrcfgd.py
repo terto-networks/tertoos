@@ -75,7 +75,7 @@ def extract_cmd_daemons(cmd_str):
 class BgpdClientMgr(threading.Thread):
     VTYSH_MARK = 'vtysh '
     PROXY_SERVER_ADDR = '/etc/frr/bgpd_client_sock'
-    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'isisd', 'pimd', 'mgmtd']
+    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'ospf6d', 'isisd', 'pimd', 'mgmtd']
     TABLE_DAEMON = {
             'DEVICE_METADATA': ['bgpd'],
             'BGP_GLOBALS': ['bgpd'],
@@ -132,6 +132,12 @@ class BgpdClientMgr(threading.Thread):
             # TertoOS S11 — L2VPN VPWS. Schema em tertoos-l2vpn.yang.
             'L2VPN_PW_CLASS': ['ldpd'],
             'L2VPN_XCONNECT_GROUP': ['ldpd'],
+            # TertoOS S6.1 — OSPFv3. Schema em tertoos-ospfv3.yang.
+            'OSPFV3_ROUTER':                  ['ospf6d'],
+            'OSPFV3_ROUTER_AREA':             ['ospf6d'],
+            'OSPFV3_ROUTER_DISTRIBUTE_ROUTE': ['ospf6d'],
+            'OSPFV3_INTERFACE':               ['ospf6d', 'zebra'],
+            'OSPFV3_ROUTER_PASSIVE_INTERFACE':['ospf6d'],
             # TertoOS S5.B — IS-IS. Schema em tertoos-isis.yang.
             'ISIS_INSTANCE':    ['isisd'],
             'ISIS_AF':          ['isisd'],
@@ -150,6 +156,8 @@ class BgpdClientMgr(threading.Thread):
                         (r'show ip pim($|\s+\S+)', ['pimd']),
                         (r'show ip igmp($|\s+\S+)', ['pimd']),
                         (r'clear ip ospf($|\s+\S+)', ['ospfd']),
+                        (r'show ipv6 ospf6($|\s+\S+)', ['ospf6d']),
+                        (r'clear ipv6 ospf6($|\s+\S+)', ['ospf6d']),
                         (r'show isis($|\s+\S+)', ['isisd']),
                         (r'clear isis($|\s+\S+)', ['isisd']),
                         (r'show ip sla($|\s+\S+)', ['iptrackd']),
@@ -1266,6 +1274,25 @@ def handle_isis_if_password(daemon, cmd_str, op, st_idx, args, data):
                                    CommandArgument(daemon, True, pwd_val)))
     return cmd_list
 
+# TertoOS S6.1 — OSPFv3 (FRR ospf6d) handlers.
+def handle_ospf6_if_common(daemon, cmd_str, op, st_idx, args, data):
+    cmd_list = []
+    no_op = 'no ' if op == CachedDataWithOp.OP_DELETE else ''
+    val = args[0]
+    cmd_list.append(cmd_str.format(CommandArgument(daemon, True, no_op),
+                                   CommandArgument(daemon, True, val)))
+    return cmd_list
+
+def handle_ospf6_if_nwtype(daemon, cmd_str, op, st_idx, args, data):
+    cmd_list = []
+    no_op = 'no ' if op == CachedDataWithOp.OP_DELETE else ''
+    nw = (args[0] or '').lower()
+    if nw == 'point_to_point':
+        nw = 'point-to-point'
+    cmd_list.append(cmd_str.format(CommandArgument(daemon, True, no_op),
+                                   CommandArgument(daemon, True, nw)))
+    return cmd_list
+
 def handle_isis_prefix_sid(daemon, cmd_str, op, st_idx, args, data):
     cmd_list = []
     no_op = 'no ' if op == CachedDataWithOp.OP_DELETE else ''
@@ -2152,6 +2179,39 @@ class BGPConfigDaemon:
                           ['true','false']),
     ]
 
+    # TertoOS S6.1 — OSPFv3 (FRR ospf6d) key_maps.
+    ospfv3_global_key_map = [
+        ('enable',                     '{no:no-prefix}'),
+        ('router-id',                  '{no:no-prefix}ospf6 router-id {}'),
+        ('default-metric',             '{no:no-prefix}default-metric {}'),
+        ('distance-all',               '{no:no-prefix}distance {}'),
+        ('passive-interface-default',  '{no:no-prefix}passive-interface default',
+                                       ['true', 'false']),
+        ('log-adjacency-changes',      '{}log-adjacency-changes {}', hdl_ospf_log),
+    ]
+
+    ospfv3_area_key_map = [
+        ('stub',              '{no:no-prefix}area {} stub'),
+        ('stub-no-summary',   '{no:no-prefix}area {} stub no-summary'),
+        ('stub-default-cost', '{no:no-prefix}area {} default-cost {}'),
+        ('import-list',       '{no:no-prefix}area {} import-list {}'),
+        ('export-list',       '{no:no-prefix}area {} export-list {}'),
+    ]
+
+    ospfv3_interface_key_map = [
+        ('area-id',                    '{}ipv6 ospf6 area {}', handle_ospf6_if_common),
+        ('cost',                       '{}ipv6 ospf6 cost {}', handle_ospf6_if_common),
+        ('hello-interval',             '{}ipv6 ospf6 hello-interval {}', handle_ospf6_if_common),
+        ('dead-interval',              '{}ipv6 ospf6 dead-interval {}', handle_ospf6_if_common),
+        ('priority',                   '{}ipv6 ospf6 priority {}', handle_ospf6_if_common),
+        ('retransmission-interval',    '{}ipv6 ospf6 retransmit-interval {}', handle_ospf6_if_common),
+        ('transmit-delay',             '{}ipv6 ospf6 transmit-delay {}', handle_ospf6_if_common),
+        ('network-type',               '{}ipv6 ospf6 network {}', handle_ospf6_if_nwtype),
+        ('bfd-enable',                 '{no:no-prefix}ipv6 ospf6 bfd', ['true','false']),
+        ('passive',                    '{no:no-prefix}ipv6 ospf6 passive', ['true','false']),
+        ('instance-id',                '{}ipv6 ospf6 instance-id {}', handle_ospf6_if_common),
+    ]
+
     static_route_map = [(['ip_prefix|ipv4', '++blackhole', '++nexthop', '++ifname', '++track', '++tag', '++distance', '++nexthop-vrf'],
                          '{no:no-prefix}ip route {} {:blackhole} {} {} {:track} {:nh-tag} {} {:nh-vrf}', hdl_static_route, socket.AF_INET),
                         (['ip_prefix|ipv6', '++blackhole', '++nexthop', '++ifname', '++track', '++tag', '++distance', '++nexthop-vrf'],
@@ -2236,6 +2296,9 @@ class BGPConfigDaemon:
                       'ISIS_REDIST':                    isis_redist_key_map,
                       'ISIS_INTERFACE':                 isis_interface_key_map,
                       'ISIS_PREFIX_SID':                isis_prefix_sid_key_map,
+                      'OSPFV3_ROUTER':                  ospfv3_global_key_map,
+                      'OSPFV3_ROUTER_AREA':             ospfv3_area_key_map,
+                      'OSPFV3_INTERFACE':               ospfv3_interface_key_map,
     }
 
     vrf_tables = {'BGP_GLOBALS', 'BGP_GLOBALS_AF',
@@ -2243,7 +2306,10 @@ class BGPConfigDaemon:
                   'BGP_GLOBALS_LISTEN_PREFIX', 'ROUTE_REDISTRIBUTE',
                   'BGP_GLOBALS_AF_AGGREGATE_ADDR', 'BGP_GLOBALS_AF_NETWORK',
                   'BGP_GLOBALS_EVPN_RT', 'BGP_GLOBALS_EVPN_VNI', 'BGP_GLOBALS_EVPN_VNI_RT',
-                  'ISIS_INSTANCE', 'ISIS_AF', 'ISIS_REDIST', 'ISIS_PREFIX_SID'}
+                  'ISIS_INSTANCE', 'ISIS_AF', 'ISIS_REDIST', 'ISIS_PREFIX_SID',
+                  'OSPFV3_ROUTER', 'OSPFV3_ROUTER_AREA',
+                  'OSPFV3_ROUTER_DISTRIBUTE_ROUTE',
+                  'OSPFV3_ROUTER_PASSIVE_INTERFACE'}
 
     @staticmethod
     def __peer_is_ip(peer):
@@ -2446,6 +2512,11 @@ class BGPConfigDaemon:
             ('ISIS_REDIST', self.bgp_table_handler_common),
             ('ISIS_INTERFACE', self.bgp_table_handler_common),
             ('ISIS_PREFIX_SID', self.bgp_table_handler_common),
+            ('OSPFV3_ROUTER', self.bgp_table_handler_common),
+            ('OSPFV3_ROUTER_AREA', self.bgp_table_handler_common),
+            ('OSPFV3_ROUTER_DISTRIBUTE_ROUTE', self.bgp_table_handler_common),
+            ('OSPFV3_INTERFACE', self.bgp_table_handler_common),
+            ('OSPFV3_ROUTER_PASSIVE_INTERFACE', self.bgp_table_handler_common),
         ]
         self.bgp_message = queue.Queue(0)
         self.table_data_cache = self.config_db.get_table_data([tbl for tbl, _ in self.table_handler_list])
@@ -3842,6 +3913,64 @@ class BGPConfigDaemon:
                             syslog.syslog(syslog.LOG_ERR, 'failed to delete passive interface {} {}'.format(if_name, if_addr))
                             continue
 
+            # TertoOS S6.1 — OSPFv3 branches.
+            elif table == 'OSPFV3_ROUTER':
+                vrf = prefix
+                router = 'router ospf6' if vrf == 'default' \
+                         else 'router ospf6 vrf {}'.format(vrf)
+                if not del_table:
+                    cmd_prefix = ['configure terminal', router]
+                    if not key_map.run_command(self, table, data, cmd_prefix):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running ospf6 config command')
+                        continue
+                else:
+                    no_router = 'no router ospf6' if vrf == 'default' \
+                                else 'no router ospf6 vrf {}'.format(vrf)
+                    command = "vtysh -c 'configure terminal' -c '{}'".format(no_router)
+                    self.__run_command(table, command)
+            elif table == 'OSPFV3_ROUTER_AREA':
+                vrf = prefix
+                router = 'router ospf6' if vrf == 'default' \
+                         else 'router ospf6 vrf {}'.format(vrf)
+                cmd_prefix = ['configure terminal', router]
+                if not key_map.run_command(self, table, data, cmd_prefix, key):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running ospf6 area command')
+                    continue
+            elif table == 'OSPFV3_ROUTER_DISTRIBUTE_ROUTE':
+                vrf = prefix
+                keyvals = key.split('|')
+                proto = keyvals[0].lower()
+                if proto == 'directly_connected':
+                    proto = 'connected'
+                router = 'router ospf6' if vrf == 'default' \
+                         else 'router ospf6 vrf {}'.format(vrf)
+                cmd_suffix = ''
+                if 'metric' in data:
+                    cmd_suffix += ' metric {}'.format(data['metric'].data)
+                if 'metric-type' in data:
+                    mt = '1' if data['metric-type'].data == 'TYPE_1' else '2'
+                    cmd_suffix += ' metric-type {}'.format(mt)
+                if 'route-map' in data:
+                    cmd_suffix += ' route-map {}'.format(data['route-map'].data)
+                no_op = 'no ' if del_table else ''
+                cmd = "{}redistribute {}{}".format(no_op, proto, cmd_suffix)
+                command = "vtysh -c 'configure terminal' -c '{}' -c '{}'".format(router, cmd)
+                self.__run_command(table, command)
+            elif table == 'OSPFV3_INTERFACE':
+                ifname = key
+                cmd_prefix = ['configure terminal', 'interface {}'.format(ifname)]
+                if not key_map.run_command(self, table, data, cmd_prefix):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running ospf6 interface command')
+                    continue
+            elif table == 'OSPFV3_ROUTER_PASSIVE_INTERFACE':
+                vrf = prefix
+                ifname = key
+                router = 'router ospf6' if vrf == 'default' \
+                         else 'router ospf6 vrf {}'.format(vrf)
+                no_op = 'no ' if del_table else ''
+                command = "vtysh -c 'configure terminal' -c '{}' -c '{}passive-interface {}'".format(
+                    router, no_op, ifname)
+                self.__run_command(table, command)
             # TertoOS S5.B — IS-IS branches.
             elif table == 'ISIS_INSTANCE':
                 vrf = prefix

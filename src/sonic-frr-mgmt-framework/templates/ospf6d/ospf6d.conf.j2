@@ -1,0 +1,7 @@
+! template: ospf6d/ospf6d.conf.j2
+!
+! OSPFv3 (FRR ospf6d) configuration rendered from CONFIG_DB
+! OSPFV3_* tables (S6.1).
+!
+{% include "ospf6d.conf.db.instance.j2" %}
+{% include "ospf6d.conf.db.interface.j2" %}

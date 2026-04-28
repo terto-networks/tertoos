@@ -159,6 +159,20 @@ stderr_logfile=NONE
 stderr_syslog=true
 dependent_startup=true
 dependent_startup_wait_for=zebra:running
+
+[program:ospf6d]
+command=/usr/lib/frr/ospf6d -A 127.0.0.1 -P 0 -M snmp
+priority=5
+stopsignal=KILL
+autostart=false
+autorestart=false
+startsecs=0
+stdout_logfile=NONE
+stdout_syslog=true
+stderr_logfile=NONE
+stderr_syslog=true
+dependent_startup=true
+dependent_startup_wait_for=zebra:running
 {% endif %}
 
 [program:fpmsyncd]

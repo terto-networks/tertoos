@@ -1,0 +1,72 @@
+{# ------------------------------------------------------------------ #}
+{# OSPFV3_ROUTER — `router ospf6 [vrf <vrf>]` blocks                  #}
+{# ------------------------------------------------------------------ #}
+{% if OSPFV3_ROUTER is defined and OSPFV3_ROUTER|length > 0 %}
+{% for vrf, ospf6 in OSPFV3_ROUTER.items() %}
+!
+{% if vrf == 'default' %}
+router ospf6
+{% else %}
+router ospf6 vrf {{ vrf }}
+{% endif %}
+{% if 'router-id' in ospf6 %}
+  ospf6 router-id {{ ospf6['router-id'] }}
+{% endif %}
+{% if 'log-adjacency-changes' in ospf6 %}
+{% if ospf6['log-adjacency-changes'] == 'detail' %}
+  log-adjacency-changes detail
+{% else %}
+  log-adjacency-changes
+{% endif %}
+{% endif %}
+{% if 'default-metric' in ospf6 %}
+  default-metric {{ ospf6['default-metric'] }}
+{% endif %}
+{% if 'distance-all' in ospf6 %}
+  distance {{ ospf6['distance-all'] }}
+{% endif %}
+{% if 'passive-interface-default' in ospf6 and ospf6['passive-interface-default'] == 'true' %}
+  passive-interface default
+{% endif %}
+{# Areas under this VRF #}
+{% if OSPFV3_ROUTER_AREA is defined %}
+{% for areakey, area in OSPFV3_ROUTER_AREA.items() %}
+{% if areakey[0] == vrf %}
+{% set aid = areakey[1] %}
+{% if 'stub' in area and area['stub'] == 'true' %}
+  area {{ aid }} stub{% if 'stub-no-summary' in area and area['stub-no-summary'] == 'true' %} no-summary{% endif %}
+
+{% endif %}
+{% if 'stub-default-cost' in area %}
+  area {{ aid }} default-cost {{ area['stub-default-cost'] }}
+{% endif %}
+{% if 'import-list' in area %}
+  area {{ aid }} import-list {{ area['import-list'] }}
+{% endif %}
+{% if 'export-list' in area %}
+  area {{ aid }} export-list {{ area['export-list'] }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{# Redistribute under this VRF #}
+{% if OSPFV3_ROUTER_DISTRIBUTE_ROUTE is defined %}
+{% for rkey, redist in OSPFV3_ROUTER_DISTRIBUTE_ROUTE.items() %}
+{% if rkey[0] == vrf %}
+{% set proto = rkey[1]|lower %}
+  redistribute {{ 'connected' if proto == 'directly_connected' else proto }}{% if 'metric' in redist %} metric {{ redist['metric'] }}{% endif %}{% if 'metric-type' in redist %} metric-type {{ '1' if redist['metric-type'] == 'TYPE_1' else '2' }}{% endif %}{% if 'route-map' in redist %} route-map {{ redist['route-map'] }}{% endif %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+{# Passive interfaces under this VRF #}
+{% if OSPFV3_ROUTER_PASSIVE_INTERFACE is defined %}
+{% for pkey in OSPFV3_ROUTER_PASSIVE_INTERFACE %}
+{% if pkey[0] == vrf %}
+  passive-interface {{ pkey[1] }}
+{% endif %}
+{% endfor %}
+{% endif %}
+exit
+{% endfor %}
+{% endif %}

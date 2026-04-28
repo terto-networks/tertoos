@@ -1,0 +1,44 @@
+{# ------------------------------------------------------------------ #}
+{# OSPFV3_INTERFACE — per-port `ipv6 ospf6 ...`                       #}
+{# ------------------------------------------------------------------ #}
+{% if OSPFV3_INTERFACE is defined and OSPFV3_INTERFACE|length > 0 %}
+{% for ifname, ifent in OSPFV3_INTERFACE.items() %}
+!
+interface {{ ifname }}
+{% if 'area-id' in ifent %}
+  ipv6 ospf6 area {{ ifent['area-id'] }}
+{% endif %}
+{% if 'cost' in ifent %}
+  ipv6 ospf6 cost {{ ifent['cost'] }}
+{% endif %}
+{% if 'hello-interval' in ifent %}
+  ipv6 ospf6 hello-interval {{ ifent['hello-interval'] }}
+{% endif %}
+{% if 'dead-interval' in ifent %}
+  ipv6 ospf6 dead-interval {{ ifent['dead-interval'] }}
+{% endif %}
+{% if 'priority' in ifent %}
+  ipv6 ospf6 priority {{ ifent['priority'] }}
+{% endif %}
+{% if 'retransmission-interval' in ifent %}
+  ipv6 ospf6 retransmit-interval {{ ifent['retransmission-interval'] }}
+{% endif %}
+{% if 'transmit-delay' in ifent %}
+  ipv6 ospf6 transmit-delay {{ ifent['transmit-delay'] }}
+{% endif %}
+{% if 'network-type' in ifent %}
+{% set nw = (ifent['network-type'] | lower | replace('_','-')) %}
+  ipv6 ospf6 network {{ nw }}
+{% endif %}
+{% if 'instance-id' in ifent %}
+  ipv6 ospf6 instance-id {{ ifent['instance-id'] }}
+{% endif %}
+{% if 'bfd-enable' in ifent and ifent['bfd-enable'] == 'true' %}
+  ipv6 ospf6 bfd
+{% endif %}
+{% if 'passive' in ifent and ifent['passive'] == 'true' %}
+  ipv6 ospf6 passive
+{% endif %}
+exit
+{% endfor %}
+{% endif %}

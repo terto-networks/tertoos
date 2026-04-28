@@ -1,0 +1,132 @@
+module tertoos-ospfv3 {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-ospfv3";
+    prefix tos_ospfv3;
+
+    import ietf-inet-types { prefix inet; }
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS OSPFv3 schema (S6.1 — P1 #20). FRR ospf6d backend.
+
+         Tabelas:
+           OSPFV3_ROUTER                    -- per-VRF instance.
+           OSPFV3_ROUTER_AREA               -- per-area config.
+           OSPFV3_ROUTER_DISTRIBUTE_ROUTE   -- redistribute.
+           OSPFV3_INTERFACE                 -- per-port (area + adj leaves).
+           OSPFV3_ROUTER_PASSIVE_INTERFACE  -- passive list.
+
+         OSPFv3 atribui interfaces a area via per-if `ipv6 ospf6 area
+         <id>` (sem `network <prefix> area`). Não há
+         OSPFV3_ROUTER_AREA_NETWORK.";
+
+    revision 2026-04-28 {
+        description "Initial S6.1 OSPFv3 schema.";
+    }
+
+    typedef ospfv3_redist_proto {
+        type enumeration {
+            enum CONNECTED;
+            enum STATIC;
+            enum BGP;
+        }
+    }
+
+    typedef ospfv3_redist_dir {
+        type enumeration {
+            enum IMPORT;
+        }
+    }
+
+    typedef ospfv3_metric_type {
+        type enumeration {
+            enum TYPE_1;
+            enum TYPE_2;
+        }
+    }
+
+    typedef ospfv3_network_type {
+        type enumeration {
+            enum BROADCAST;
+            enum POINT_TO_POINT;
+        }
+    }
+
+    container sonic-ospfv3 {
+
+        container OSPFV3_ROUTER {
+            list OSPFV3_ROUTER_LIST {
+                key "vrf_name";
+                leaf vrf_name { type string; }
+                leaf enable                       { type boolean; }
+                leaf router-id                    { type inet:ipv4-address; }
+                leaf log-adjacency-changes        { type enumeration { enum default; enum detail; } }
+                leaf default-metric               { type uint32; }
+                leaf distance-all                 { type uint8; }
+                leaf passive-interface-default    { type boolean; }
+            }
+        }
+
+        container OSPFV3_ROUTER_AREA {
+            list OSPFV3_ROUTER_AREA_LIST {
+                key "vrf_name area_id";
+                leaf vrf_name { type string; }
+                leaf area_id  { type string; }
+                leaf stub             { type boolean; }
+                leaf stub-no-summary  { type boolean; }
+                leaf stub-default-cost { type uint32; }
+                leaf import-list      { type string; }
+                leaf export-list      { type string; }
+            }
+        }
+
+        container OSPFV3_ROUTER_DISTRIBUTE_ROUTE {
+            list OSPFV3_ROUTER_DISTRIBUTE_ROUTE_LIST {
+                key "vrf_name protocol direction";
+                leaf vrf_name  { type string; }
+                leaf protocol  { type ospfv3_redist_proto; }
+                leaf direction { type ospfv3_redist_dir; }
+                leaf metric        { type uint32; }
+                leaf metric-type   { type ospfv3_metric_type; }
+                leaf route-map     { type string; }
+                leaf access-list   { type string; }
+            }
+        }
+
+        container OSPFV3_INTERFACE {
+            list OSPFV3_INTERFACE_LIST {
+                key "interface";
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel|Vlan|Loopback)[0-9]+(\.[0-9]+)?';
+                    }
+                }
+                leaf area-id            { type string; }
+                leaf cost               { type uint32; }
+                leaf hello-interval     { type uint16; }
+                leaf dead-interval      { type uint16; }
+                leaf priority           { type uint8; }
+                leaf network-type       { type ospfv3_network_type; }
+                leaf retransmission-interval { type uint16; }
+                leaf transmit-delay     { type uint16; }
+                leaf bfd-enable         { type boolean; }
+                leaf passive            { type boolean; }
+                leaf instance-id        { type uint8; }
+            }
+        }
+
+        container OSPFV3_ROUTER_PASSIVE_INTERFACE {
+            list OSPFV3_ROUTER_PASSIVE_INTERFACE_LIST {
+                key "vrf_name interface";
+                leaf vrf_name  { type string; }
+                leaf interface {
+                    type string {
+                        pattern '(Ethernet|PortChannel|Vlan|Loopback)[0-9]+(\.[0-9]+)?';
+                    }
+                }
+            }
+        }
+
+    }
+}
