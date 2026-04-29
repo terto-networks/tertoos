@@ -1,0 +1,48 @@
+module tertoos-acl-qos-overlay {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-acl-qos-overlay";
+    prefix tos_aclqos;
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS ACL+QoS overlay (S12.B.5). SONiC ACL_RULE upstream
+         expõe apenas PACKET_ACTION + match leaves; não há leaf para
+         policer ref nem set_dscp/set_traffic_class action no schema
+         (ainda que SAI suporte SET_POLICER, SET_DSCP, SET_TC nas
+         plataformas Broadcom DNX e Centec).
+
+         Esta overlay carrega QoS actions adicionais que se aplicam
+         a um ACL_RULE existente. Escrita por tertoos-qoscompd quando
+         uma classe de policy-map tem match_access_group + ações QoS.
+
+         Tabela:
+           TERTOOS_ACL_RULE_QOS  -- key (acl_table, rule_name).
+                                   leaves: policer_name,
+                                   set_traffic_class, set_dscp.
+
+         Runtime: ASIC bind gating uma extensão futura do qosorch
+         (ou daemon tertoos-aclqosorch) que consome esta overlay e
+         programa SAI_ACL_ENTRY_ATTR_ACTION_SET_POLICER +
+         SAI_ACL_ENTRY_ATTR_ACTION_SET_DSCP + SAI_ACL_ENTRY_ATTR_
+         ACTION_SET_TC.";
+
+    revision 2026-04-28 {
+        description "Initial S12.B.5 overlay schema.";
+    }
+
+    container sonic-tertoos-acl-qos {
+
+        container TERTOOS_ACL_RULE_QOS {
+            list TERTOOS_ACL_RULE_QOS_LIST {
+                key "acl_table rule_name";
+                leaf acl_table { type string; }
+                leaf rule_name { type string; }
+                leaf policer_name      { type string; }
+                leaf set_traffic_class { type uint8 { range "0..7"; } }
+                leaf set_dscp          { type uint8 { range "0..63"; } }
+            }
+        }
+
+    }
+}
