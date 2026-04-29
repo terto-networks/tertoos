@@ -4,22 +4,34 @@ Setup do servidor de build do TertoOS. Otimizado para HP DL360 G9 +
 2× Xeon E5-2673 v3/v4 + 128 GB RAM + 2 TB SSD, mas funciona em
 qualquer servidor com ≥16 cores e ≥64 GB RAM.
 
-## Uso rápido
+## Uso rápido (ordem correta)
 
 ```bash
-sudo ./setup.sh           # aplica tudo, reboot ao final
-sudo ./validate.sh        # verifica se setup pegou
-sudo ./rollback.sh        # reverte tudo (se quiser default Ubuntu)
+sudo ./setup.sh           # 1. performance (RAMdisk, ccache, governor, Docker)
+sudo reboot               #    para ativar kernel cmdline
+sudo ./validate.sh        # 2. confere setup OK
+
+# Adicione sua chave SSH ao user 'build' antes de hardening:
+# (do laptop) ssh-copy-id build@<DL360-IP>
+
+sudo ./harden.sh          # 3. security (UFW, SSH, fail2ban, sysctl)
+
+# GitHub: gerar token em Settings → Actions → Runners → New
+sudo ./register-runner.sh # 4. registra DL360 como GH Actions runner
 ```
 
 ## Arquivos
 
 | Arquivo | Função |
 |---|---|
-| `BUILD-MACHINE-SETUP.md` | Doc completa nivel júnior — explica cada otimização. |
-| `setup.sh` | Aplica todas otimizações (idempotente, com backup). |
-| `validate.sh` | Confere checks de health pós-setup. |
-| `rollback.sh` | Restaura defaults Ubuntu se algo deu errado. |
+| `BUILD-MACHINE-SETUP.md` | Doc completa nível júnior — performance + cada otimização. |
+| `SECURITY.md` | Modelo de segurança em 3 níveis (OS / GitHub / Rede). |
+| `CI-PIPELINE.md` | Pipeline GH Actions self-hosted — workflows, security, troubleshoot. |
+| `setup.sh` | Performance: RAMdisk, ccache, governor, Docker, etc. |
+| `validate.sh` | Health-check pós-setup. |
+| `harden.sh` | Security: UFW, SSH harden, fail2ban, unattended-upgrades, sysctl. |
+| `register-runner.sh` | Registra DL360 como GH Actions self-hosted runner. |
+| `rollback.sh` | Restaura defaults Ubuntu (reverte só `setup.sh`). |
 
 ## O que o setup faz
 
