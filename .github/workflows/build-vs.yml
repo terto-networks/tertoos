@@ -1,0 +1,121 @@
+name: build-vs
+
+# S14 — Build VS (virtual switch) image. Roda EXCLUSIVAMENTE no
+# self-hosted runner DL360 — GH Actions é só trigger/orquestração,
+# todo trabalho pesado executa no servidor de build local.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'platform/vs/**'
+      - 'src/sonic-swss/**'
+      - 'src/sonic-swss-common/**'
+      - 'src/terto-horizon/**'
+      - 'rules/**'
+      - 'dockers/**'
+      - 'Makefile*'
+      - '.github/workflows/build-vs.yml'
+  pull_request:
+    paths:
+      - 'platform/vs/**'
+      - 'src/terto-horizon/**'
+      - 'rules/**'
+      - 'Makefile*'
+  workflow_dispatch:
+    inputs:
+      build_jobs:
+        description: 'Override SONIC_BUILD_JOBS (default = nproc)'
+        required: false
+        default: ''
+
+# Apenas uma build VS por vez no DL360 — evita contenção de RAMdisk.
+concurrency:
+  group: tertoos-build-vs
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 120
+    env:
+      PLATFORM: vs
+      CCACHE_DIR: /mnt/ccache
+      USE_DOCKER_BUILDKIT: '1'
+      DOCKER_BUILDKIT: '1'
+
+    steps:
+      - name: Checkout (com submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Mover working tree para RAMdisk
+        id: ramdisk
+        run: |
+          BUILD_DIR="/mnt/build/run-${{ github.run_id }}-vs"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          # Copia arquivos checkados (sem .git/objects pesado — git já é local).
+          rsync -a --exclude='.git/objects/pack/*.pack' \
+                "$GITHUB_WORKSPACE/" "$BUILD_DIR/"
+          echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+          df -h /mnt/build
+
+      - name: Configurar build
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          JOBS="${{ inputs.build_jobs }}"
+          [ -z "$JOBS" ] && JOBS=$(nproc)
+          echo "SONIC_BUILD_JOBS=$JOBS" >> "$GITHUB_ENV"
+          make configure PLATFORM=vs
+
+      - name: Build (make all)
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          set -o pipefail
+          make all SONIC_BUILD_JOBS=$SONIC_BUILD_JOBS 2>&1 \
+            | tee /var/log/tertoos-build-${{ github.run_id }}-vs.log
+
+      - name: Verificar artifacts
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          ls -lh target/sonic-vs.img.gz
+          du -sh target/
+
+      - name: Conversão qcow2
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          gunzip -k target/sonic-vs.img.gz
+          qemu-img convert -f raw -O qcow2 -c \
+            target/sonic-vs.img target/tertoos-vs-${{ github.sha }}.qcow2
+          ls -lh target/tertoos-vs-*.qcow2
+
+      - name: Copiar artifacts para SSD (retenção)
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          DEST="/var/lib/tertoos-builds/${{ github.run_id }}-vs"
+          mkdir -p "$DEST"
+          cp target/sonic-vs.img.gz "$DEST/"
+          cp target/tertoos-vs-*.qcow2 "$DEST/"
+          sha256sum target/sonic-vs.img.gz target/tertoos-vs-*.qcow2 > "$DEST/SHA256SUMS"
+          echo "Artifacts em: $DEST"
+
+      - name: Upload qcow2 para artifacts (GH UI inspection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tertoos-vs-${{ github.sha }}
+          path: ${{ steps.ramdisk.outputs.build_dir }}/target/tertoos-vs-*.qcow2
+          retention-days: 7
+          compression-level: 0  # Já é qcow2 compressed
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Cleanup RAMdisk
+        if: always()
+        run: |
+          rm -rf "${{ steps.ramdisk.outputs.build_dir }}"
+          df -h /mnt/build

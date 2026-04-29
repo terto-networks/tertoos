@@ -1,0 +1,92 @@
+name: build-centec
+
+# S14 — Build NOS image para Marvell Teralynx (Centec). Trigger restrito
+# pra tag push e manual — Centec é o target de produção MPLS, build lá
+# é pesada e validação requer HW.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'platform/marvell-teralynx/**'
+      - 'src/terto-horizon/**'
+      - 'rules/**'
+      - '.github/workflows/build-centec.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      build_jobs:
+        description: 'Override SONIC_BUILD_JOBS (default = nproc)'
+        required: false
+        default: ''
+
+concurrency:
+  group: tertoos-build-centec
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 180
+    env:
+      PLATFORM: marvell-teralynx
+      CCACHE_DIR: /mnt/ccache
+      USE_DOCKER_BUILDKIT: '1'
+      DOCKER_BUILDKIT: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Mover para RAMdisk
+        id: ramdisk
+        run: |
+          BUILD_DIR="/mnt/build/run-${{ github.run_id }}-centec"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          rsync -a --exclude='.git/objects/pack/*.pack' \
+                "$GITHUB_WORKSPACE/" "$BUILD_DIR/"
+          echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Configurar build
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          JOBS="${{ inputs.build_jobs }}"
+          [ -z "$JOBS" ] && JOBS=$(nproc)
+          echo "SONIC_BUILD_JOBS=$JOBS" >> "$GITHUB_ENV"
+          make configure PLATFORM=marvell-teralynx
+
+      - name: Build
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          set -o pipefail
+          make all SONIC_BUILD_JOBS=$SONIC_BUILD_JOBS 2>&1 \
+            | tee /var/log/tertoos-build-${{ github.run_id }}-centec.log
+
+      - name: Copiar artifacts para SSD
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          DEST="/var/lib/tertoos-builds/${{ github.run_id }}-centec"
+          mkdir -p "$DEST"
+          cp target/*.bin "$DEST/" 2>/dev/null || true
+          (cd "$DEST" && sha256sum * > SHA256SUMS)
+
+      - name: Upload .bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: tertoos-centec-${{ github.sha }}
+          path: ${{ steps.ramdisk.outputs.build_dir }}/target/*.bin
+          retention-days: 30
+          compression-level: 0
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Cleanup RAMdisk
+        if: always()
+        run: rm -rf "${{ steps.ramdisk.outputs.build_dir }}"

@@ -1,0 +1,54 @@
+name: lint
+
+# S14 — Linters fast-path para shell scripts e workflow YAMLs.
+# Roda no DL360 self-hosted (mesmo padrão dos builds), mas é
+# instantâneo (<10s) — não aquece RAMdisk nem ccache.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '**.sh'
+      - '**.yml'
+      - '**.yaml'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - '**.sh'
+      - '**.yml'
+      - '**.yaml'
+      - '.github/workflows/**'
+
+jobs:
+  shellcheck:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        run: |
+          # shellcheck precisa estar instalado (apt install shellcheck no setup.sh)
+          if ! command -v shellcheck &>/dev/null; then
+            echo "shellcheck não instalado — pulando"
+            exit 0
+          fi
+          # Lint scripts em build-machine/
+          find build-machine -name '*.sh' -print0 \
+            | xargs -0 -I{} shellcheck -S warning {}
+
+  yamllint:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run yamllint
+        run: |
+          if ! command -v yamllint &>/dev/null; then
+            pip install --quiet yamllint || exit 0
+          fi
+          yamllint -d "{extends: default, rules: {line-length: {max: 200}}}" \
+            .github/workflows/

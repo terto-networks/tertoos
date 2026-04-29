@@ -1,0 +1,158 @@
+name: release
+
+# S14 — Tag push (v*) dispara builds dos 3 targets em paralelo no
+# DL360, agrega artifacts e cria GitHub Release.
+#
+# Usage:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Trigga este workflow.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag para release (ex: v0.1.0)'
+        required: true
+
+permissions:
+  contents: write   # criar Release
+
+# Múltiplos targets podem rodar em paralelo se DL360 tiver capacidade.
+# Concurrency group permite — não cancela in-progress, apenas
+# enfileira se mesmo tag for re-disparado.
+concurrency:
+  group: tertoos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-vs:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 120
+    env:
+      PLATFORM: vs
+      CCACHE_DIR: /mnt/ccache
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build VS
+        run: |
+          BUILD_DIR="/mnt/build/release-${{ github.run_id }}-vs"
+          rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR"
+          rsync -a --exclude='.git/objects/pack/*.pack' "$GITHUB_WORKSPACE/" "$BUILD_DIR/"
+          cd "$BUILD_DIR"
+          make configure PLATFORM=vs
+          make all SONIC_BUILD_JOBS=$(nproc)
+          gunzip -k target/sonic-vs.img.gz
+          qemu-img convert -f raw -O qcow2 -c \
+            target/sonic-vs.img target/tertoos-vs-${{ github.ref_name }}.qcow2
+          mkdir -p $GITHUB_WORKSPACE/release-artifacts
+          cp target/tertoos-vs-${{ github.ref_name }}.qcow2 \
+             $GITHUB_WORKSPACE/release-artifacts/
+          rm -rf "$BUILD_DIR"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vs-release
+          path: release-artifacts/*
+
+  build-broadcom:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 180
+    env:
+      PLATFORM: broadcom
+      CCACHE_DIR: /mnt/ccache
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build Broadcom
+        run: |
+          BUILD_DIR="/mnt/build/release-${{ github.run_id }}-broadcom"
+          rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR"
+          rsync -a --exclude='.git/objects/pack/*.pack' "$GITHUB_WORKSPACE/" "$BUILD_DIR/"
+          cd "$BUILD_DIR"
+          make configure PLATFORM=broadcom
+          make all SONIC_BUILD_JOBS=$(nproc)
+          mkdir -p $GITHUB_WORKSPACE/release-artifacts
+          for f in target/*.bin; do
+            cp "$f" $GITHUB_WORKSPACE/release-artifacts/tertoos-broadcom-${{ github.ref_name }}-$(basename "$f")
+          done
+          rm -rf "$BUILD_DIR"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: broadcom-release
+          path: release-artifacts/*
+
+  build-centec:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 180
+    env:
+      PLATFORM: marvell-teralynx
+      CCACHE_DIR: /mnt/ccache
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build Centec
+        run: |
+          BUILD_DIR="/mnt/build/release-${{ github.run_id }}-centec"
+          rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR"
+          rsync -a --exclude='.git/objects/pack/*.pack' "$GITHUB_WORKSPACE/" "$BUILD_DIR/"
+          cd "$BUILD_DIR"
+          make configure PLATFORM=marvell-teralynx
+          make all SONIC_BUILD_JOBS=$(nproc)
+          mkdir -p $GITHUB_WORKSPACE/release-artifacts
+          for f in target/*.bin; do
+            cp "$f" $GITHUB_WORKSPACE/release-artifacts/tertoos-centec-${{ github.ref_name }}-$(basename "$f")
+          done
+          rm -rf "$BUILD_DIR"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: centec-release
+          path: release-artifacts/*
+
+  publish:
+    needs: [build-vs, build-broadcom, build-centec]
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Coletar artifacts dos jobs anteriores
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Agregar + checksums
+        run: |
+          mkdir -p release
+          find all-artifacts -type f -exec cp -v {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS
+          ls -lh
+
+      - name: Criar GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: TertoOS ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}

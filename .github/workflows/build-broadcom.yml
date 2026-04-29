@@ -1,0 +1,109 @@
+name: build-broadcom
+
+# S14 — Build NOS image para Broadcom Trident III (AS5912 e similares).
+# Build pesada (~50min na DL360 com tuning). Trigger é mais restrito
+# que VS para evitar uso desnecessário do hardware.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'platform/broadcom/**'
+      - 'src/terto-horizon/**'
+      - 'rules/**'
+      - 'dockers/**'
+      - 'Makefile*'
+      - '.github/workflows/build-broadcom.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      build_jobs:
+        description: 'Override SONIC_BUILD_JOBS (default = nproc)'
+        required: false
+        default: ''
+      target:
+        description: 'Sub-target (broadcom default = generic; ex: as5912)'
+        required: false
+        default: 'broadcom'
+
+concurrency:
+  group: tertoos-build-broadcom
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, tertoos-build, dl360]
+    timeout-minutes: 180
+    env:
+      PLATFORM: broadcom
+      CCACHE_DIR: /mnt/ccache
+      USE_DOCKER_BUILDKIT: '1'
+      DOCKER_BUILDKIT: '1'
+
+    steps:
+      - name: Checkout (com submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Mover working tree para RAMdisk
+        id: ramdisk
+        run: |
+          BUILD_DIR="/mnt/build/run-${{ github.run_id }}-broadcom"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          rsync -a --exclude='.git/objects/pack/*.pack' \
+                "$GITHUB_WORKSPACE/" "$BUILD_DIR/"
+          echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+          df -h /mnt/build
+
+      - name: Configurar build (broadcom)
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          JOBS="${{ inputs.build_jobs }}"
+          [ -z "$JOBS" ] && JOBS=$(nproc)
+          echo "SONIC_BUILD_JOBS=$JOBS" >> "$GITHUB_ENV"
+          make configure PLATFORM=broadcom
+
+      - name: Build (make all)
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          set -o pipefail
+          make all SONIC_BUILD_JOBS=$SONIC_BUILD_JOBS 2>&1 \
+            | tee /var/log/tertoos-build-${{ github.run_id }}-broadcom.log
+
+      - name: Verificar artifacts
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          ls -lh target/sonic-broadcom.bin || ls -lh target/*.bin
+          du -sh target/
+
+      - name: Copiar artifacts para SSD
+        working-directory: ${{ steps.ramdisk.outputs.build_dir }}
+        run: |
+          DEST="/var/lib/tertoos-builds/${{ github.run_id }}-broadcom"
+          mkdir -p "$DEST"
+          cp target/*.bin "$DEST/" 2>/dev/null || true
+          cp target/*.swi "$DEST/" 2>/dev/null || true
+          (cd "$DEST" && sha256sum * > SHA256SUMS)
+          echo "Artifacts em: $DEST"
+
+      - name: Upload .bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: tertoos-broadcom-${{ github.sha }}
+          path: ${{ steps.ramdisk.outputs.build_dir }}/target/*.bin
+          retention-days: 30
+          compression-level: 0
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Cleanup RAMdisk
+        if: always()
+        run: |
+          rm -rf "${{ steps.ramdisk.outputs.build_dir }}"
+          df -h /mnt/build
