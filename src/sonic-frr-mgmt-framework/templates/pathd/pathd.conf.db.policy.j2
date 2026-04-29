@@ -1,0 +1,47 @@
+{# ------------------------------------------------------------------ #}
+{# SR_TE_POLICY + CANDIDATE_PATH + SEGMENT_LIST + HOP                 #}
+{# ------------------------------------------------------------------ #}
+{% if SR_TE_POLICY is defined and SR_TE_POLICY|length > 0 %}
+!
+segment-routing
+ traffic-eng
+{% if SR_TE_SEGMENT_LIST is defined %}
+{% for slname, sl in SR_TE_SEGMENT_LIST.items() %}
+  segment-list {{ slname }}
+{% if 'description' in sl %}
+   description {{ sl['description'] }}
+{% endif %}
+{% if SR_TE_SEGMENT_LIST_HOP is defined %}
+{% for hopkey, hop in SR_TE_SEGMENT_LIST_HOP.items() %}
+{% if hopkey[0] == slname %}
+   index {{ hopkey[1] }} mpls label {{ hop['mpls_label'] }}{% if 'nai_address' in hop %} nai prefix {{ hop['nai_address'] }}{% endif %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+   exit
+{% endfor %}
+{% endif %}
+{% for polkey, pol in SR_TE_POLICY.items() %}
+{% set ep = polkey[0] %}
+{% set color = polkey[1] %}
+  policy color {{ color }} endpoint {{ ep }}
+{% if 'name' in pol %}
+   name {{ pol['name'] }}
+{% endif %}
+{% if 'bsid' in pol %}
+   binding-sid {{ pol['bsid'] }}
+{% endif %}
+{% if SR_TE_CANDIDATE_PATH is defined %}
+{% for cpkey, cp in SR_TE_CANDIDATE_PATH.items() %}
+{% if cpkey[0] == ep and cpkey[1] == color %}
+   candidate-path preference {{ cpkey[2] }} {% if 'name' in cp %}name {{ cp['name'] }} {% endif %}{% if 'discriminator' in cp %}discriminator {{ cp['discriminator'] }} {% endif %}{% if 'protocol_origin' in cp %}protocol-origin {{ cp['protocol_origin'] }} {% endif %}{% if 'dynamic' in cp and cp['dynamic'] == 'true' %}dynamic {% endif %}{% if 'metric_type' in cp %}metric-type {{ cp['metric_type'] }} {% endif %}{% if 'segment_list_name' in cp %}segment-list {{ cp['segment_list_name'] }}{% endif %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+   exit
+{% endfor %}
+ exit
+exit
+{% endif %}

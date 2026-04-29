@@ -1,0 +1,109 @@
+module tertoos-srte {
+    yang-version 1.1;
+    namespace "http://tertoos.io/yang/tertoos-srte";
+    prefix tos_srte;
+
+    import ietf-inet-types { prefix inet; }
+
+    organization "TertoOS";
+    contact "TertoOS Maintainers <maintainers@tertoos.io>";
+    description
+        "TertoOS SR-TE policies + PCEP schema (S9 — P2 #26, #27).
+         Backend: FRR pathd (já habilitado em supervisord; wired em
+         frrcfgd S9).
+
+         Tabelas:
+           SR_TE_POLICY            -- per-(endpoint,color) policy.
+           SR_TE_CANDIDATE_PATH    -- paths within a policy.
+           SR_TE_SEGMENT_LIST      -- ordered segment-list (SID stack).
+           SR_TE_SEGMENT_LIST_HOP  -- per-hop entries (label/NAI).
+           SR_TE_PCC               -- PCEP client config (singleton).
+
+         Forwarding (SAI MPLS) gating Centec lab.";
+
+    revision 2026-04-28 {
+        description "Initial S9 SR-TE schema.";
+    }
+
+    typedef sr_te_protocol_origin {
+        type enumeration {
+            enum configured;
+            enum pcep;
+            enum bgp;
+        }
+    }
+
+    typedef sr_te_metric_type {
+        type enumeration {
+            enum igp;
+            enum te;
+            enum hopcount;
+            enum delay;
+        }
+    }
+
+    container sonic-srte {
+
+        container SR_TE_POLICY {
+            list SR_TE_POLICY_LIST {
+                key "endpoint color";
+                leaf endpoint { type inet:ip-address; }
+                leaf color    { type uint32 { range "1..4294967295"; } }
+                leaf bsid     { type uint32 { range "16..1048575"; } }
+                leaf name     { type string { length "1..64"; } }
+                leaf enable   { type boolean; default true; }
+            }
+        }
+
+        container SR_TE_CANDIDATE_PATH {
+            list SR_TE_CANDIDATE_PATH_LIST {
+                key "endpoint color preference";
+                leaf endpoint   { type inet:ip-address; }
+                leaf color      { type uint32; }
+                leaf preference { type uint32 { range "1..65535"; } }
+                leaf name              { type string { length "1..64"; } }
+                leaf discriminator     { type uint32; }
+                leaf protocol_origin   { type sr_te_protocol_origin; default configured; }
+                leaf originator        { type inet:ip-address; }
+                leaf dynamic           { type boolean; default false; }
+                leaf metric_type       { type sr_te_metric_type; }
+                leaf affinity_include_any { type uint32; }
+                leaf affinity_include_all { type uint32; }
+                leaf affinity_exclude_any { type uint32; }
+                leaf bandwidth         { type uint64; description "bps"; }
+                leaf segment_list_name { type string; }
+            }
+        }
+
+        container SR_TE_SEGMENT_LIST {
+            list SR_TE_SEGMENT_LIST_LIST {
+                key "name";
+                leaf name        { type string { length "1..64"; } }
+                leaf description { type string; }
+            }
+        }
+
+        container SR_TE_SEGMENT_LIST_HOP {
+            list SR_TE_SEGMENT_LIST_HOP_LIST {
+                key "list_name index";
+                leaf list_name { type string; }
+                leaf index     { type uint32 { range "1..65535"; } }
+                leaf mpls_label { type uint32 { range "16..1048575"; } }
+                leaf nai_address { type inet:ip-address; }
+            }
+        }
+
+        container SR_TE_PCC {
+            list SR_TE_PCC_LIST {
+                key "name";
+                leaf name           { type string; description "Singleton 'global' or named PCC."; }
+                leaf enable         { type boolean; default true; }
+                leaf source_address { type inet:ip-address; }
+                leaf pce_address    { type inet:ip-address; }
+                leaf pce_port       { type uint16; default 4189; }
+                leaf msd            { type uint8; description "Max segment depth."; }
+            }
+        }
+
+    }
+}

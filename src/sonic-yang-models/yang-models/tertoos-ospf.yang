@@ -137,6 +137,24 @@ module tertoos-ospf {
                     type uint32 { range "1..4294967"; }
                     units "Mbps";
                 }
+                // S8 — Segment Routing globals (#24).
+                leaf segment_routing      { type boolean; }
+                leaf sr_global_block_lower { type uint32 { range "16..1048575"; } }
+                leaf sr_global_block_upper { type uint32 { range "16..1048575"; } }
+                leaf sr_local_block_lower  { type uint32 { range "16..1048575"; } }
+                leaf sr_local_block_upper  { type uint32 { range "16..1048575"; } }
+            }
+        }
+
+        // -------- OSPFV2_PREFIX_SID (S8 — #24) ----------------------------
+        container OSPFV2_PREFIX_SID {
+            list OSPFV2_PREFIX_SID_LIST {
+                key "vrf_name prefix";
+                leaf vrf_name { type string; }
+                leaf prefix   { type inet:ip-prefix; }
+                leaf index        { type uint32; }
+                leaf explicit_null { type boolean; }
+                leaf no_php       { type boolean; }
             }
         }
 

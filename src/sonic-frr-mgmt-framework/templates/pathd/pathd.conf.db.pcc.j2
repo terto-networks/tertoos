@@ -1,0 +1,26 @@
+{# ------------------------------------------------------------------ #}
+{# SR_TE_PCC — PCEP / PCC config                                      #}
+{# ------------------------------------------------------------------ #}
+{% if SR_TE_PCC is defined and SR_TE_PCC|length > 0 %}
+!
+segment-routing
+ traffic-eng
+  pcep
+{% for pccname, pcc in SR_TE_PCC.items() %}
+   pcc
+{% if 'source_address' in pcc %}
+    source-address ip {{ pcc['source_address'] }}
+{% endif %}
+{% if 'pce_address' in pcc %}
+    peer ip {{ pcc['pce_address'] }}{% if 'pce_port' in pcc %} port {{ pcc['pce_port'] }}{% endif %}
+
+{% endif %}
+{% if 'msd' in pcc %}
+    msd {{ pcc['msd'] }}
+{% endif %}
+   exit
+{% endfor %}
+  exit
+ exit
+exit
+{% endif %}

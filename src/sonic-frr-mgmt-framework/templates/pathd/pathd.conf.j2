@@ -1,0 +1,6 @@
+! template: pathd/pathd.conf.j2
+!
+! SR-TE policies + PCEP rendered from CONFIG_DB SR_TE_* tables (S9).
+!
+{% include "pathd.conf.db.policy.j2" %}
+{% include "pathd.conf.db.pcc.j2" %}

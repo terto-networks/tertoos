@@ -75,7 +75,7 @@ def extract_cmd_daemons(cmd_str):
 class BgpdClientMgr(threading.Thread):
     VTYSH_MARK = 'vtysh '
     PROXY_SERVER_ADDR = '/etc/frr/bgpd_client_sock'
-    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'ospf6d', 'isisd', 'ldpd', 'pimd', 'mgmtd']
+    ALL_DAEMONS = ['bgpd', 'zebra', 'staticd', 'bfdd', 'ospfd', 'ospf6d', 'isisd', 'ldpd', 'pathd', 'pimd', 'mgmtd']
     TABLE_DAEMON = {
             'DEVICE_METADATA': ['bgpd'],
             'BGP_GLOBALS': ['bgpd'],
@@ -138,6 +138,15 @@ class BgpdClientMgr(threading.Thread):
             'L2VPN_BD_AC':         ['ldpd'],
             'L2VPN_BD_NEIGHBOR':   ['ldpd'],
             'EVPN_GLOBALS':        ['bgpd'],
+            # TertoOS S8 — OSPF Segment Routing prefix-SID (#24).
+            'OSPFV2_PREFIX_SID':              ['ospfd'],
+            'OSPFV3_PREFIX_SID':              ['ospf6d'],
+            # TertoOS S9 — SR-TE policies + PCEP (FRR pathd).
+            'SR_TE_POLICY':                   ['pathd'],
+            'SR_TE_CANDIDATE_PATH':           ['pathd'],
+            'SR_TE_SEGMENT_LIST':             ['pathd'],
+            'SR_TE_SEGMENT_LIST_HOP':         ['pathd'],
+            'SR_TE_PCC':                      ['pathd'],
             # TertoOS S6.1 — OSPFv3. Schema em tertoos-ospfv3.yang.
             'OSPFV3_ROUTER':                  ['ospf6d'],
             'OSPFV3_ROUTER_AREA':             ['ospf6d'],
@@ -163,6 +172,9 @@ class BgpdClientMgr(threading.Thread):
                         (r'show ip igmp($|\s+\S+)', ['pimd']),
                         (r'clear ip ospf($|\s+\S+)', ['ospfd']),
                         (r'show ipv6 ospf6($|\s+\S+)', ['ospf6d']),
+                        (r'show sr-te($|\s+\S+)', ['pathd']),
+                        (r'clear sr-te($|\s+\S+)', ['pathd']),
+                        (r'show mpls table($|\s+\S+)', ['zebra']),
                         (r'clear ipv6 ospf6($|\s+\S+)', ['ospf6d']),
                         (r'show isis($|\s+\S+)', ['isisd']),
                         (r'clear isis($|\s+\S+)', ['isisd']),
@@ -2239,6 +2251,58 @@ class BGPConfigDaemon:
         ('keepalive', '{no:no-prefix}neighbor {} keepalive {}'),
     ]
 
+    # TertoOS S8 — OSPF SR globals (added to ospfv2_global_key_map at runtime
+    # via merging is impractical; emit as separate key_map entries for the
+    # OSPFv2_ROUTER table).
+    ospfv2_sr_extra_key_map = [
+        ('segment_routing',          '{no:no-prefix}segment-routing on', ['true','false']),
+        ('sr_global_block_lower',    '{no:no-prefix}segment-routing global-block {} {}',
+                                     None),
+    ]
+    ospfv2_prefix_sid_key_map = [
+        ('index',         '{}prefix-sid prefix {} index {}', None),
+        ('explicit_null', '{no:no-prefix}prefix-sid prefix {} explicit-null', ['true','false']),
+        ('no_php',        '{no:no-prefix}prefix-sid prefix {} no-php-flag', ['true','false']),
+    ]
+    ospfv3_prefix_sid_key_map = ospfv2_prefix_sid_key_map  # mesma sintaxe
+
+    # TertoOS S9 — SR-TE policies + PCEP (FRR pathd).
+    sr_te_policy_key_map = [
+        ('enable', '{no:no-prefix}policy color {} endpoint {}', ['true','false']),
+        ('bsid',   '{no:no-prefix}binding-sid {}'),
+        ('name',   '{no:no-prefix}name {}'),
+    ]
+
+    sr_te_candidate_path_key_map = [
+        ('name',                   '{no:no-prefix}candidate-path preference {} name {}'),
+        ('discriminator',          '{no:no-prefix}candidate-path discriminator {}'),
+        ('protocol_origin',        '{no:no-prefix}candidate-path protocol-origin {}'),
+        ('dynamic',                '{no:no-prefix}candidate-path dynamic', ['true','false']),
+        ('metric_type',            '{no:no-prefix}candidate-path metric-type {}'),
+        ('bandwidth',              '{no:no-prefix}candidate-path bandwidth {}'),
+        ('affinity_include_any',   '{no:no-prefix}candidate-path affinity include-any {}'),
+        ('affinity_include_all',   '{no:no-prefix}candidate-path affinity include-all {}'),
+        ('affinity_exclude_any',   '{no:no-prefix}candidate-path affinity exclude-any {}'),
+        ('segment_list_name',      '{no:no-prefix}candidate-path segment-list {}'),
+    ]
+
+    sr_te_segment_list_key_map = [
+        ('description', '{no:no-prefix}description {}'),
+    ]
+
+    sr_te_segment_list_hop_key_map = [
+        ('mpls_label',  '{no:no-prefix}index {} mpls label {}'),
+        ('nai_address', '{no:no-prefix}index {} nai prefix {}'),
+    ]
+
+    sr_te_pcc_key_map = [
+        ('enable',         '{no:no-prefix}pcc', ['true','false']),
+        ('source_address', '{no:no-prefix}source-address ip {}'),
+        ('pce_address',    '{no:no-prefix}peer ip {}'),
+        ('pce_port',       '{no:no-prefix}peer-port {}'),
+        ('msd',            '{no:no-prefix}msd {}'),
+    ]
+
     # TertoOS S11.x — VPLS bridge-domain / VFI key_maps.
     l2vpn_bd_key_map = [
         ('description',                '{no:no-prefix}description {}'),
@@ -2378,6 +2442,13 @@ class BGPConfigDaemon:
                       'L2VPN_VFI':                      l2vpn_vfi_key_map,
                       'L2VPN_BD_NEIGHBOR':              l2vpn_bd_neighbor_key_map,
                       'EVPN_GLOBALS':                   evpn_globals_key_map,
+                      'OSPFV2_PREFIX_SID':              ospfv2_prefix_sid_key_map,
+                      'OSPFV3_PREFIX_SID':              ospfv3_prefix_sid_key_map,
+                      'SR_TE_POLICY':                   sr_te_policy_key_map,
+                      'SR_TE_CANDIDATE_PATH':           sr_te_candidate_path_key_map,
+                      'SR_TE_SEGMENT_LIST':             sr_te_segment_list_key_map,
+                      'SR_TE_SEGMENT_LIST_HOP':         sr_te_segment_list_hop_key_map,
+                      'SR_TE_PCC':                      sr_te_pcc_key_map,
     }
 
     vrf_tables = {'BGP_GLOBALS', 'BGP_GLOBALS_AF',
@@ -2391,7 +2462,8 @@ class BGPConfigDaemon:
                   'OSPFV3_ROUTER_PASSIVE_INTERFACE',
                   'MPLS_LDP_ROUTER', 'MPLS_LDP_AF',
                   'MPLS_LDP_INTERFACE', 'MPLS_LDP_NEIGHBOR',
-                  'EVPN_GLOBALS'}
+                  'EVPN_GLOBALS',
+                  'OSPFV2_PREFIX_SID', 'OSPFV3_PREFIX_SID'}
 
     @staticmethod
     def __peer_is_ip(peer):
@@ -2608,6 +2680,13 @@ class BGPConfigDaemon:
             ('L2VPN_BD_AC', self.bgp_table_handler_common),
             ('L2VPN_BD_NEIGHBOR', self.bgp_table_handler_common),
             ('EVPN_GLOBALS', self.bgp_table_handler_common),
+            ('OSPFV2_PREFIX_SID', self.bgp_table_handler_common),
+            ('OSPFV3_PREFIX_SID', self.bgp_table_handler_common),
+            ('SR_TE_POLICY', self.bgp_table_handler_common),
+            ('SR_TE_CANDIDATE_PATH', self.bgp_table_handler_common),
+            ('SR_TE_SEGMENT_LIST', self.bgp_table_handler_common),
+            ('SR_TE_SEGMENT_LIST_HOP', self.bgp_table_handler_common),
+            ('SR_TE_PCC', self.bgp_table_handler_common),
         ]
         self.bgp_message = queue.Queue(0)
         self.table_data_cache = self.config_db.get_table_data([tbl for tbl, _ in self.table_handler_list])
@@ -4056,6 +4135,84 @@ class BGPConfigDaemon:
                 cmd_prefix.append('address-family {}'.format(af))
                 if not key_map.run_command(self, table, data, cmd_prefix, peer):
                     syslog.syslog(syslog.LOG_ERR, 'failed running mpls ldp neighbor command')
+                    continue
+            # TertoOS S8/S9 — OSPF SR + SR-TE + PCEP branches.
+            elif table == 'OSPFV2_PREFIX_SID':
+                vrf = prefix
+                pfx = key.split('|', 1)[-1]
+                router = 'router ospf' if vrf == 'default' \
+                         else 'router ospf vrf {}'.format(vrf)
+                cmd_prefix = ['configure terminal', router, 'segment-routing on']
+                if not key_map.run_command(self, table, data, cmd_prefix, pfx):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running ospfv2 prefix-sid command')
+                    continue
+            elif table == 'OSPFV3_PREFIX_SID':
+                vrf = prefix
+                pfx = key.split('|', 1)[-1]
+                router = 'router ospf6' if vrf == 'default' \
+                         else 'router ospf6 vrf {}'.format(vrf)
+                cmd_prefix = ['configure terminal', router, 'segment-routing on']
+                if not key_map.run_command(self, table, data, cmd_prefix, pfx):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running ospfv3 prefix-sid command')
+                    continue
+            elif table == 'SR_TE_POLICY':
+                # key formato: <endpoint>|<color>
+                keyvals = key.split('|')
+                if len(keyvals) != 2:
+                    continue
+                endpoint, color = keyvals[0], keyvals[1]
+                cmd_prefix = ['configure terminal',
+                              'segment-routing',
+                              'traffic-eng',
+                              'policy color {} endpoint {}'.format(color, endpoint)]
+                if del_table:
+                    no_cmd = "no policy color {} endpoint {}".format(color, endpoint)
+                    self.__run_command(table,
+                        "vtysh -c 'configure terminal' -c 'segment-routing' "
+                        "-c 'traffic-eng' -c '{}'".format(no_cmd))
+                else:
+                    if not key_map.run_command(self, table, data, cmd_prefix):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running sr-te policy command')
+                        continue
+            elif table == 'SR_TE_CANDIDATE_PATH':
+                # key formato: <endpoint>|<color>|<preference>
+                keyvals = key.split('|')
+                if len(keyvals) != 3:
+                    continue
+                endpoint, color, pref = keyvals[0], keyvals[1], keyvals[2]
+                cmd_prefix = ['configure terminal', 'segment-routing', 'traffic-eng',
+                              'policy color {} endpoint {}'.format(color, endpoint)]
+                if not key_map.run_command(self, table, data, cmd_prefix, pref):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running sr-te candidate-path command')
+                    continue
+            elif table == 'SR_TE_SEGMENT_LIST':
+                name = key
+                cmd_prefix = ['configure terminal', 'segment-routing', 'traffic-eng',
+                              'segment-list {}'.format(name)]
+                if del_table:
+                    self.__run_command(table,
+                        "vtysh -c 'configure terminal' -c 'segment-routing' "
+                        "-c 'traffic-eng' -c 'no segment-list {}'".format(name))
+                else:
+                    if not key_map.run_command(self, table, data, cmd_prefix):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running sr-te segment-list command')
+                        continue
+            elif table == 'SR_TE_SEGMENT_LIST_HOP':
+                # key formato: <list_name>|<index>
+                keyvals = key.split('|')
+                if len(keyvals) != 2:
+                    continue
+                listname, idx = keyvals[0], keyvals[1]
+                cmd_prefix = ['configure terminal', 'segment-routing', 'traffic-eng',
+                              'segment-list {}'.format(listname)]
+                if not key_map.run_command(self, table, data, cmd_prefix, idx):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running sr-te segment-list hop')
+                    continue
+            elif table == 'SR_TE_PCC':
+                cmd_prefix = ['configure terminal', 'segment-routing',
+                              'traffic-eng', 'pcep', 'pcc']
+                if not key_map.run_command(self, table, data, cmd_prefix):
+                    syslog.syslog(syslog.LOG_ERR, 'failed running sr-te pcc command')
                     continue
             # TertoOS S11.x — VPLS bridge-domain / VFI / EVPN-MPLS branches.
             elif table == 'L2VPN_BRIDGE_DOMAIN':
