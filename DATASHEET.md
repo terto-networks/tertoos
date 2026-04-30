@@ -1086,15 +1086,28 @@ exista no kernel/SONiC/FRR underneath):
 
 - ❌ **MPLS-TE** (RSVP-TE bandwidth reservation): FRR backend tem; XML
   KLISH não tem comandos. Use FRR vtysh manualmente como workaround.
-- ❌ **Multicast** (PIM, IGMP, MLD): não exposto.
+- ❌ **Multicast** (PIM, IGMP, MLD): não exposto. Snooping incluído em S15.I (deferido).
 - ❌ **DHCP server / relay**: não exposto via TertoOS KLISH (fica no
   KLISH SONiC clássico — incompatível com IOS-XR look).
 - ❌ **VRRP**: não exposto.
 - ❌ **GRE / IP tunnels**: não exposto.
 - ❌ **NAT** (estado-NAT, source-NAT): não exposto.
 - ❌ **Firewall stateful** (ZBFW): não exposto.
-- ❌ **Storm control** detalhado: não exposto.
 - ❌ **MAC ACL** beyond ethernet-services basics.
+
+### S15 — L2 CLI overlay (entregue)
+
+Features expostas em S15 (sprint pós-bring-up):
+
+- ✅ **Spanning Tree** (PVST/RSTP/MST): mode, timers (forward-time, hello-time, max-age), priority, per-VLAN bridge_priority, root primary/secondary syntactic sugar, MST configuration (name, revision, instance, max-hops), per-port portfast, bpdu-guard, root-guard, uplink-fast, edge-port, per-VLAN-per-port cost/priority. Show: `show spanning-tree [summary|vlan|interface|mst|root|blocked|counters]`. Clear: counters + detected-protocols.
+- ✅ **Storm-control** per-port: broadcast/multicast/unknown-unicast em kbps ou pps. Show: `show storm-control [interface]`.
+- ✅ **MAC address-table**: aging-time global, static entries, show por VLAN/interface/MAC/dynamic/static/count, clear dynamic por VLAN/interface/address.
+- ✅ **VLAN aggregator**: `show vlan [brief|id|summary]` enumera VLANs em uso (sub-interfaces, bridge-domains, EVPN VLAN-VNI, Q-in-Q outer).
+- ✅ **Q-in-Q sub-interface**: `encapsulation dot1q <s> second-dot1q <c|any>` para stack de tags na sub-if.
+- ✅ **Encapsulation untagged**: `encapsulation untagged` em config-if (l2transport).
+- ✅ **interface l2transport**: marca porta como L2-puro (sem L3 processing).
+- ✅ **Per-port MAC learning**: `mac-learning enable|disable`.
+- ✅ **Per-port MAC limit**: `mac-limit <n>`, `mac-limit action drop|shutdown|log`.
 
 ### Limitações em VS (simulador)
 
