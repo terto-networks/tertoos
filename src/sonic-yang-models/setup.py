@@ -230,6 +230,11 @@ yang_files = [
     'tertoos-portchannel-extensions.yang',
     'tertoos-vlan-sub-interface-extensions.yang',
     'tertoos-vrf-extensions.yang',
+    'tertoos-acl-qos-overlay.yang',
+    'tertoos-isis.yang',
+    'tertoos-ospfv3.yang',
+    'tertoos-qos-policy.yang',
+    'tertoos-srte.yang',
 ]
 
 class my_build_py(build_py):
