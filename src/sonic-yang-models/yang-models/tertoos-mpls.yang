@@ -31,7 +31,7 @@ module tertoos-mpls {
         }
     }
 
-    container sonic-mpls {
+    container tertoos-mpls {
 
         container MPLS_LDP_ROUTER {
             list MPLS_LDP_ROUTER_LIST {

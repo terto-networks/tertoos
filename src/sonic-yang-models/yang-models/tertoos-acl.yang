@@ -106,7 +106,7 @@ module tertoos-acl {
         description "L4 port single value or inclusive range.";
     }
 
-    container sonic-acl {
+    container tertoos-acl {
 
         container ACL_TABLE {
             description "ACL table definitions. Key on table name.";

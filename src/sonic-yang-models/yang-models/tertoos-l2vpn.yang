@@ -36,7 +36,7 @@ module tertoos-l2vpn {
         }
     }
 
-    container sonic-l2vpn {
+    container tertoos-l2vpn {
 
         container L2VPN_PW_CLASS {
             list L2VPN_PW_CLASS_LIST {
@@ -126,7 +126,7 @@ module tertoos-l2vpn {
                 leaf pw-id { type uint32 { range "1..4294967295"; } }
                 leaf pw-class {
                     type leafref {
-                        path "/sonic-l2vpn/L2VPN_PW_CLASS/L2VPN_PW_CLASS_LIST/name";
+                        path "/tertoos-l2vpn/L2VPN_PW_CLASS/L2VPN_PW_CLASS_LIST/name";
                     }
                 }
                 leaf mtu { type uint16 { range "64..9216"; } }

@@ -37,7 +37,7 @@ module tertoos-qos-policy {
         type enumeration { enum qos; enum traffic; }
     }
 
-    container sonic-tertoos-qos-policy {
+    container tertoos-qos-policy {
 
         container TERTOOS_CLASS_MAP {
             list TERTOOS_CLASS_MAP_LIST {

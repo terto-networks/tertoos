@@ -15,7 +15,7 @@ module tertoos-horizon {
         description "Initial S13.A schema.";
     }
 
-    container sonic-horizon {
+    container tertoos-horizon {
 
         container HORIZON_AGENT {
             list HORIZON_AGENT_LIST {

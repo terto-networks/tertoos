@@ -53,7 +53,7 @@ module tertoos-ospfv3 {
         }
     }
 
-    container sonic-ospfv3 {
+    container tertoos-ospfv3 {
 
         container OSPFV3_ROUTER {
             list OSPFV3_ROUTER_LIST {
