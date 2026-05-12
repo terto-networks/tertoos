@@ -61,7 +61,7 @@ module tertoos-line-vty {
              aaa = use the AAA pipeline (TACACS+/RADIUS/local).";
     }
 
-    container sonic-line-vty {
+    container tertoos-line-vty {
 
         container LINE_VTY {
             description

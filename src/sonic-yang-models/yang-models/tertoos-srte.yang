@@ -42,7 +42,7 @@ module tertoos-srte {
         }
     }
 
-    container sonic-srte {
+    container tertoos-srte {
 
         container SR_TE_POLICY {
             list SR_TE_POLICY_LIST {

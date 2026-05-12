@@ -64,7 +64,7 @@ module tertoos-isis {
         }
     }
 
-    container sonic-isis {
+    container tertoos-isis {
 
         container ISIS_INSTANCE {
             list ISIS_INSTANCE_LIST {

@@ -55,7 +55,7 @@ module tertoos-bfd-extensions {
         }
     }
 
-    container sonic-bfd {
+    container tertoos-bfd-extensions {
 
         container BFD_PEER_SINGLE_HOP {
             list BFD_PEER_SINGLE_HOP_LIST {

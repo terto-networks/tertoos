@@ -1087,12 +1087,8 @@ endif
 
 # start docker daemon
 docker-start :
-	$(Q)sudo sed -i 's/--storage-driver=vfs/--storage-driver=$(SONIC_SLAVE_DOCKER_DRIVER)/' /etc/default/docker
-	$(Q)sudo sed -i -e '/http_proxy/d' -e '/https_proxy/d' /etc/default/docker
-	$(Q)sudo bash -c "{ echo \"export http_proxy=$$http_proxy\"; \
-	            echo \"export https_proxy=$$https_proxy\"; \
-	            echo \"export no_proxy=$$no_proxy\"; } >> /etc/default/docker"
-	$(Q)test x$(SONIC_CONFIG_USE_NATIVE_DOCKERD_FOR_BUILD) != x"y" && sudo service docker status &> /dev/null || ( sudo service docker start &> /dev/null && ./scripts/wait_for_docker.sh 60 )
+	@echo "[docker-start] skipped (USE_NATIVE_DOCKERD_FOR_BUILD=y, host docker in use)"
+	@true
 
 # targets for building simple docker images that do not depend on any debian packages
 $(addprefix $(TARGET_PATH)/, $(SONIC_SIMPLE_DOCKER_IMAGES)) : $(TARGET_PATH)/%.gz : .platform docker-start $$(addsuffix -load,$$(addprefix $(TARGET_PATH)/,$$($$*.gz_LOAD_DOCKERS)))

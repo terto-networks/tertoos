@@ -55,7 +55,7 @@ module tertoos-evpn {
         }
     }
 
-    container sonic-evpn {
+    container tertoos-evpn {
 
         container EVPN_ETHERNET_SEGMENT {
             list EVPN_ETHERNET_SEGMENT_LIST {

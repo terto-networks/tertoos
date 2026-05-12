@@ -31,7 +31,7 @@ module tertoos-acl-qos-overlay {
         description "Initial S12.B.5 overlay schema.";
     }
 
-    container sonic-tertoos-acl-qos {
+    container tertoos-acl-qos-overlay {
 
         container TERTOOS_ACL_RULE_QOS {
             list TERTOOS_ACL_RULE_QOS_LIST {

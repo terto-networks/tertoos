@@ -88,7 +88,7 @@ module tertoos-ospf {
         }
     }
 
-    container sonic-ospf {
+    container tertoos-ospf {
 
         // -------- OSPFV2_ROUTER -------------------------------------------
         container OSPFV2_ROUTER {
