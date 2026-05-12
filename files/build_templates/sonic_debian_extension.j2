@@ -821,6 +821,19 @@ sudo LANG=C DEBIAN_FRONTEND=noninteractive chroot $FILESYSTEM_ROOT apt-mark hold
 {% endfor %}
 {% endif %}
 
+{% if include_tertoos_cli == "y" %}
+## TertoOS — make the IOS-XR CLI wrapper the default login shell for admin.
+##
+## /usr/bin/tertoos is provided by terto-horizon-cli .deb (installed above).
+## It is a bash wrapper that docker-execs into mgmt-framework and launches
+## klish. Edge cases (scp, ssh-with-cmd, bash escape, container down) are
+## handled inside the script itself.
+##
+## /etc/shells must list the new shell before chsh accepts it (PAM check).
+echo /usr/bin/tertoos | sudo tee -a $FILESYSTEM_ROOT/etc/shells >/dev/null
+sudo LANG=C chroot $FILESYSTEM_ROOT chsh -s /usr/bin/tertoos {{sonicadmin_user}}
+{% endif %}
+
 ## Run depmod command for target kernel modules
 sudo LANG=C chroot $FILESYSTEM_ROOT depmod -a {{kversion}}
 

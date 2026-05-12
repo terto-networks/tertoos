@@ -1559,6 +1559,7 @@ $(addprefix $(TARGET_PATH)/, $(SONIC_INSTALLERS)) : $(TARGET_PATH)/% : \
 	export include_macsec="$(INCLUDE_MACSEC)"
 	export include_dhcp_server="$(INCLUDE_DHCP_SERVER)"
 	export include_mgmt_framework="$(INCLUDE_MGMT_FRAMEWORK)"
+	export include_tertoos_cli="$(INCLUDE_TERTOOS_CLI)"
 	export include_iccpd="$(INCLUDE_ICCPD)"
 	export include_dash_ha="$(INCLUDE_DASH_HA)"
 	export include_stp="$(INCLUDE_STP)"
