@@ -34,8 +34,10 @@ LINUX_KERNEL_VERSION=6.12.41+deb13
 ## Working directory to prepare the file system
 FILESYSTEM_ROOT=./fsroot
 PLATFORM_DIR=platform
-## Hostname for the linux image
-HOSTNAME=sonic
+## Hostname for the linux image. Drives ${SYSTEM_NAME} in klish prompts
+## (tertoos>, tertoos#, tertoos(config)#) and the bash hostname inside
+## the running switch. Operator changes it via `hostname X` in config.
+HOSTNAME=tertoos
 DEFAULT_USERINFO="Default admin user,,,"
 BUILD_TOOL_PATH=src/sonic-build-hooks/buildinfo
 TRUSTED_GPG_DIR=$BUILD_TOOL_PATH/trusted.gpg.d
