@@ -1019,9 +1019,9 @@ static ssize_t show_version(struct device *dev, struct device_attribute *attr, c
 /*
  * I2C init/probing/exit functions
  */
-static int as5912_54x_cpld_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int as5912_54x_cpld_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct i2c_adapter *adap = to_i2c_adapter(client->dev.parent);
 	struct as5912_54x_cpld_data *data;
 	int ret = -ENODEV;
@@ -1068,7 +1068,7 @@ exit:
 	return ret;
 }
 
-static int as5912_54x_cpld_remove(struct i2c_client *client)
+static void as5912_54x_cpld_remove(struct i2c_client *client)
 {
     struct as5912_54x_cpld_data *data = i2c_get_clientdata(client);
     const struct attribute_group *group = NULL;
@@ -1092,8 +1092,6 @@ static int as5912_54x_cpld_remove(struct i2c_client *client)
     }
 
     kfree(data);
-
-    return 0;
 }
 
 static int as5912_54x_cpld_read_internal(struct i2c_client *client, u8 reg)
