@@ -1930,6 +1930,9 @@ class BGPConfigDaemon:
                          ('rt_vpn_both',                                '{no:no-prefix}rt vpn both {}'),
                          ('export_vpn',                                 '{no:no-prefix}export vpn', ['true','false']),
                          ('import_vpn',                                 '{no:no-prefix}import vpn', ['true','false']),
+                         # S15 — L3VPN BGP/MPLS service label (#29)
+                         ('label_vpn_export_auto',                      '{no:no-prefix}label vpn export auto', ['true','false']),
+                         ('label_vpn_export',                           '{no:no-prefix}label vpn export {}'),
                          ('redistribute_connected',                     '{no:no-prefix}redistribute connected', ['true','false']),
                          ('redistribute_static_rmap',                   '{no:no-prefix}redistribute static route-map {}'),
                          ('rmap_vpn_export',                            '{no:no-prefix}route-map vpn export {}'),
