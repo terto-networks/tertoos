@@ -74,6 +74,31 @@ router ospf vrf {{ vrf }}
 {% endif %}
   {{ distance_cmd }}
 {% endif %}
+{# -------OSPFV2_ROUTER Segment Routing (S8 — #24) ------- #}
+{% if 'segment_routing' in ospf_instance and ospf_instance['segment_routing'] == 'true' %}
+  capability opaque
+  segment-routing on
+{% endif %}
+{% if 'sr_global_block_lower' in ospf_instance and 'sr_global_block_upper' in ospf_instance %}
+  segment-routing global-block {{ ospf_instance['sr_global_block_lower'] }} {{ ospf_instance['sr_global_block_upper'] }}
+{% endif %}
+{% if 'sr_local_block_lower' in ospf_instance and 'sr_local_block_upper' in ospf_instance %}
+  segment-routing local-block {{ ospf_instance['sr_local_block_lower'] }} {{ ospf_instance['sr_local_block_upper'] }}
+{% endif %}
+{% if OSPFV2_PREFIX_SID is defined and OSPFV2_PREFIX_SID|length > 0 %}
+{% for sidkey, sid_instance in OSPFV2_PREFIX_SID.items() %}
+{% if sidkey[0] == vrf and 'index' in sid_instance %}
+{% set sid_prefix = sidkey[1] %}
+{% set sid_suffix = '' %}
+{% if 'explicit_null' in sid_instance and sid_instance['explicit_null'] == 'true' %}
+{% set sid_suffix = ' explicit-null' %}
+{% elif 'no_php' in sid_instance and sid_instance['no_php'] == 'true' %}
+{% set sid_suffix = ' no-php-flag' %}
+{% endif %}
+  segment-routing prefix {{ sid_prefix }} index {{ sid_instance['index'] }}{{ sid_suffix }}
+{% endif %}
+{% endfor %}
+{% endif %}
 {# -------OSPFV2_ROUTER end --------------------------- #}
 {# -------OSPFV2_ROUTER_AREA Begin --------------------------- #}
 {% if OSPFV2_ROUTER_AREA is defined and OSPFV2_ROUTER_AREA|length > 0 %}
