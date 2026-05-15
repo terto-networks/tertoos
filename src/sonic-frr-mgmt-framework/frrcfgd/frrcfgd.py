@@ -2108,7 +2108,16 @@ class BGPConfigDaemon:
                              ('distance-all',                  '{no:no-prefix}distance {}'),
                              ('distance-external',             '{no:no-prefix}distance ospf external {}'),
                              ('distance-inter-area',           '{no:no-prefix}distance ospf inter-area {}'),
-                             ('distance-intra-area',           '{no:no-prefix}distance ospf intra-area {}')]
+                             ('distance-intra-area',           '{no:no-prefix}distance ospf intra-area {}'),
+                             # TertoOS S8 — Segment Routing globals (#24).
+                             # capability opaque must be enabled for SR opaque
+                             # LSAs to flood — FRR 10.5.1 does not auto-enable.
+                             ('segment_routing',               '{no:no-prefix}capability opaque', ['true', 'false']),
+                             ('segment_routing',               '{no:no-prefix}segment-routing on', ['true', 'false']),
+                             (['sr_global_block_lower', 'sr_global_block_upper'],
+                                                               '{no:no-prefix}segment-routing global-block {} {}'),
+                             (['sr_local_block_lower',  'sr_local_block_upper'],
+                                                               '{no:no-prefix}segment-routing local-block {} {}')]
 
     ospfv2_area_key_map = [('stub',                     '{no:no-prefix}area {} stub'),
                            ('stub-no-summary',          '{no:no-prefix}area {} stub no-summary'),
@@ -2251,18 +2260,14 @@ class BGPConfigDaemon:
         ('keepalive', '{no:no-prefix}neighbor {} keepalive {}'),
     ]
 
-    # TertoOS S8 — OSPF SR globals (added to ospfv2_global_key_map at runtime
-    # via merging is impractical; emit as separate key_map entries for the
-    # OSPFv2_ROUTER table).
-    ospfv2_sr_extra_key_map = [
-        ('segment_routing',          '{no:no-prefix}segment-routing on', ['true','false']),
-        ('sr_global_block_lower',    '{no:no-prefix}segment-routing global-block {} {}',
-                                     None),
-    ]
+    # TertoOS S8 — OSPF SR prefix-SID (#24). Globals (segment-routing on,
+    # SRGB/SRLB) are merged into ospfv2_global_key_map above so they ride
+    # the same OSPFV2_ROUTER handler. Prefix-SID is per-prefix so it gets
+    # its own key_map keyed on the OSPFV2_PREFIX_SID table.
     ospfv2_prefix_sid_key_map = [
-        ('index',         '{}prefix-sid prefix {} index {}', None),
-        ('explicit_null', '{no:no-prefix}prefix-sid prefix {} explicit-null', ['true','false']),
-        ('no_php',        '{no:no-prefix}prefix-sid prefix {} no-php-flag', ['true','false']),
+        ('index',         '{}segment-routing prefix {} index {}', None),
+        ('explicit_null', '{no:no-prefix}segment-routing prefix {} explicit-null', ['true','false']),
+        ('no_php',        '{no:no-prefix}segment-routing prefix {} no-php-flag', ['true','false']),
     ]
     ospfv3_prefix_sid_key_map = ospfv2_prefix_sid_key_map  # mesma sintaxe
 
