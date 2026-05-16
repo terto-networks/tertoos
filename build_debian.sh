@@ -66,6 +66,10 @@ if [[ $RFS_SPLIT_LAST_STAGE != y ]]; then
 
 ## Prepare the file system directory
 if [[ -d $FILESYSTEM_ROOT ]]; then
+    # TertoOS: lazy-unmount qualquer mount preso em/sob o chroot (proc,
+    # sys, self-bind, overlays do dockerd) deixado por um build anterior
+    # interrompido — senao 'rm -rf' falha com 'Device or resource busy'.
+    mount | awk -v r="$(readlink -m "$FILESYSTEM_ROOT")" '$3==r || index($3,r"/")==1 {print $3}' | sort -r | while read -r m; do sudo umount -lf "$m" 2>/dev/null || true; done
     sudo rm -rf $FILESYSTEM_ROOT || die "Failed to clean chroot directory"
 fi
 mkdir -p $FILESYSTEM_ROOT
@@ -627,6 +631,10 @@ if [[ $RFS_SPLIT_LAST_STAGE == y ]]; then
     sudo mount proc /proc -t proc || true
 
     sudo fuser -vm $FILESYSTEM_ROOT || true
+    # TertoOS: lazy-unmount qualquer mount preso em/sob o chroot (proc,
+    # sys, self-bind, overlays do dockerd) deixado por um build anterior
+    # interrompido — senao 'rm -rf' falha com 'Device or resource busy'.
+    mount | awk -v r="$(readlink -m "$FILESYSTEM_ROOT")" '$3==r || index($3,r"/")==1 {print $3}' | sort -r | while read -r m; do sudo umount -lf "$m" 2>/dev/null || true; done
     sudo rm -rf $FILESYSTEM_ROOT
     sudo unsquashfs -d $FILESYSTEM_ROOT $TARGET_PATH/$RFS_SQUASHFS_NAME
 
