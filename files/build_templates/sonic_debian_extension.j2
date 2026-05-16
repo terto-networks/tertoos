@@ -833,6 +833,9 @@ sudo LANG=C DEBIAN_FRONTEND=noninteractive chroot $FILESYSTEM_ROOT apt-mark hold
 install_deb_package $debs_path/terto-horizon-cli_*.deb
 
 ## /etc/shells must list the new shell before chsh accepts it (PAM check).
+## Install terto-horizon-cli .deb (provides /usr/bin/tertoos + /usr/sbin/tertoos-cli).
+install_deb_package $debs_path/terto-horizon-cli_*.deb
+
 echo /usr/bin/tertoos | sudo tee -a $FILESYSTEM_ROOT/etc/shells >/dev/null
 sudo LANG=C chroot $FILESYSTEM_ROOT chsh -s /usr/bin/tertoos {{sonicadmin_user}}
 {% endif %}
