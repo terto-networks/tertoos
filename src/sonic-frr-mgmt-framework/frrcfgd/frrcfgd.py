@@ -2268,7 +2268,7 @@ class BGPConfigDaemon:
     # the same OSPFV2_ROUTER handler. Prefix-SID is per-prefix so it gets
     # its own key_map keyed on the OSPFV2_PREFIX_SID table.
     ospfv2_prefix_sid_key_map = [
-        ('index',         '{}segment-routing prefix {} index {}', None),
+        ('index',         '{no:no-prefix}segment-routing prefix {} index {}'),
         ('explicit_null', '{no:no-prefix}segment-routing prefix {} explicit-null', ['true','false']),
         ('no_php',        '{no:no-prefix}segment-routing prefix {} no-php-flag', ['true','false']),
     ]
@@ -2276,7 +2276,9 @@ class BGPConfigDaemon:
 
     # TertoOS S9 — SR-TE policies + PCEP (FRR pathd).
     sr_te_policy_key_map = [
-        ('enable', '{no:no-prefix}policy color {} endpoint {}', ['true','false']),
+        # 'enable' nao tem entry: a policy e' criada ao entrar no contexto
+        # 'policy color C endpoint E' (cmd_prefix do handler). enable=false
+        # / remocao e' tratado via del_table no dispatch.
         ('bsid',   '{no:no-prefix}binding-sid {}'),
         ('name',   '{no:no-prefix}name {}'),
     ]
@@ -2470,8 +2472,11 @@ class BGPConfigDaemon:
                   'OSPFV3_ROUTER_PASSIVE_INTERFACE',
                   'MPLS_LDP_ROUTER', 'MPLS_LDP_AF',
                   'MPLS_LDP_INTERFACE', 'MPLS_LDP_NEIGHBOR',
-                  'EVPN_GLOBALS',
-                  'OSPFV2_PREFIX_SID', 'OSPFV3_PREFIX_SID'}
+                  'EVPN_GLOBALS'}
+    # NOTE: OSPFV2_PREFIX_SID / OSPFV3_PREFIX_SID removidos de vrf_tables.
+    # Sao tabelas de OSPF — nao dependem de ASN BGP. Mante-las aqui fazia
+    # __update_bgp descartar o prefix-sid quando a VRF nao tinha BGP
+    # configurado (caso do SR-MPLS puro). OSPFV2_ROUTER ja estava fora.
 
     @staticmethod
     def __peer_is_ip(peer):
@@ -2804,7 +2809,28 @@ class BGPConfigDaemon:
             return self.bgp_asn[vrf]
         if vrf == self.DEFAULT_VRF and self.metadata_asn is not None:
             return self.metadata_asn
-        return None
+        # Fallback: a instancia 'router bgp' da VRF pode ter sido criada
+        # fora do CONFIG_DB (ex.: via vtysh direto). Sem isso __update_bgp
+        # descartaria silenciosamente BGP_GLOBALS_AF da VRF (caso L3VPN
+        # onde so' as VPN-leaves passam pelo pipeline). Consulta o bgpd e
+        # cacheia o ASN encontrado em bgp_asn.
+        asn = self.__query_frr_vrf_asn(vrf)
+        if asn is not None:
+            self.bgp_asn[vrf] = asn
+        return asn
+
+    def __query_frr_vrf_asn(self, vrf):
+        try:
+            out = subprocess.check_output(['vtysh', '-c', 'show running-config'],
+                                          stderr=subprocess.DEVNULL).decode('utf-8', 'ignore')
+        except Exception:
+            return None
+        if vrf == self.DEFAULT_VRF:
+            pat = re.compile(r'^router bgp (\d+)\s*$', re.M)
+        else:
+            pat = re.compile(r'^router bgp (\d+) vrf ' + re.escape(vrf) + r'\s*$', re.M)
+        m = pat.search(out)
+        return m.group(1) if m else None
 
     def __delete_vrf_asn(self, vrf, table, data):
         if vrf != self.DEFAULT_VRF and vrf not in self.bgp_asn:
@@ -4165,6 +4191,7 @@ class BGPConfigDaemon:
                     continue
             elif table == 'SR_TE_POLICY':
                 # key formato: <endpoint>|<color>
+                key = prefix if key is None else prefix + '|' + key
                 keyvals = key.split('|')
                 if len(keyvals) != 2:
                     continue
@@ -4184,17 +4211,36 @@ class BGPConfigDaemon:
                         continue
             elif table == 'SR_TE_CANDIDATE_PATH':
                 # key formato: <endpoint>|<color>|<preference>
+                key = prefix if key is None else prefix + '|' + key
                 keyvals = key.split('|')
                 if len(keyvals) != 3:
                     continue
                 endpoint, color, pref = keyvals[0], keyvals[1], keyvals[2]
-                cmd_prefix = ['configure terminal', 'segment-routing', 'traffic-eng',
-                              'policy color {} endpoint {}'.format(color, endpoint)]
-                if not key_map.run_command(self, table, data, cmd_prefix, pref):
-                    syslog.syslog(syslog.LOG_ERR, 'failed running sr-te candidate-path command')
-                    continue
+                policy_ctx = ("vtysh -c 'configure terminal' -c 'segment-routing' "
+                              "-c 'traffic-eng' -c 'policy color {} endpoint {}'".format(
+                                  color, endpoint))
+                if del_table:
+                    self.__run_command(table, policy_ctx +
+                        " -c 'no candidate-path preference {}'".format(pref))
+                else:
+                    # FRR pathd: candidate-path explicit e' UM comando unico
+                    # (preference + name + explicit + segment-list). O key_map
+                    # campo-a-campo gera linhas invalidas — montamos do data.
+                    cp_name = data['name'].data if 'name' in data else 'cand-{}'.format(pref)
+                    slist = data['segment_list_name'].data \
+                            if 'segment_list_name' in data else None
+                    if slist is None:
+                        # segment_list_name ainda nao chegou neste batch de
+                        # notificacoes; sera renderizado quando o HSET dele
+                        # disparar (o data desse evento ja traz name junto).
+                        continue
+                    cmd = ("candidate-path preference {} name {} explicit "
+                           "segment-list {}".format(pref, cp_name, slist))
+                    if not self.__run_command(table, policy_ctx + " -c '{}'".format(cmd)):
+                        syslog.syslog(syslog.LOG_ERR, 'failed running sr-te candidate-path command')
+                        continue
             elif table == 'SR_TE_SEGMENT_LIST':
-                name = key
+                name = prefix if key is None else prefix + '|' + key
                 cmd_prefix = ['configure terminal', 'segment-routing', 'traffic-eng',
                               'segment-list {}'.format(name)]
                 if del_table:
@@ -4207,6 +4253,7 @@ class BGPConfigDaemon:
                         continue
             elif table == 'SR_TE_SEGMENT_LIST_HOP':
                 # key formato: <list_name>|<index>
+                key = prefix if key is None else prefix + '|' + key
                 keyvals = key.split('|')
                 if len(keyvals) != 2:
                     continue
