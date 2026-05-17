@@ -2692,6 +2692,8 @@ class BGPConfigDaemon:
             ('L2VPN_VFI', self.bgp_table_handler_common),
             ('L2VPN_BD_AC', self.bgp_table_handler_common),
             ('L2VPN_BD_NEIGHBOR', self.bgp_table_handler_common),
+            ('L2VPN_PW_CLASS', self.bgp_table_handler_common),
+            ('L2VPN_XCONNECT_GROUP', self.bgp_table_handler_common),
             ('EVPN_GLOBALS', self.bgp_table_handler_common),
             ('OSPFV2_PREFIX_SID', self.bgp_table_handler_common),
             ('OSPFV3_PREFIX_SID', self.bgp_table_handler_common),
@@ -4308,6 +4310,80 @@ class BGPConfigDaemon:
                 if not key_map.run_command(self, table, data, cmd_prefix, peer):
                     syslog.syslog(syslog.LOG_ERR, 'failed running vfi neighbor command')
                     continue
+            # TertoOS S15 — VPWS point-to-point (xconnect) + pw-class.
+            elif table == 'L2VPN_PW_CLASS':
+                # FRR ldpd nao tem objeto pw-class: control-word / pw-type
+                # vivem no membro pseudowire. Aqui so re-aplicamos os
+                # xconnects que referenciam esta pw-class para propagar a
+                # mudanca de atributo ao membro pseudowire deles.
+                pwc_name = prefix
+                for xkey, xdata in self.config_db.get_table('L2VPN_XCONNECT_GROUP').items():
+                    if xdata is None or xdata.get('pw-class') != pwc_name:
+                        continue
+                    upd = {k: CachedDataWithOp(v, CachedDataWithOp.OP_ADD)
+                           for k, v in xdata.items()}
+                    self.bgp_message.put((self.config_db.serialize_key(xkey),
+                                          False, 'L2VPN_XCONNECT_GROUP', upd))
+                for _, dval in data.items():
+                    dval.status = CachedDataWithOp.STAT_SUCC
+            elif table == 'L2VPN_XCONNECT_GROUP':
+                # key: <group>|<p2p>  -> FRR l2vpn <group>-<p2p> type vpls.
+                # ldpd faz a sinalizacao tLDP do PW automaticamente para o
+                # neighbor lsr-id (requer `mpls ldp` ativo). Forwarding no
+                # dataplane e' SAI-gated (ver 13-config-l2vpn.xml).
+                full = prefix if key is None else prefix + '|' + key
+                keyvals = full.split('|')
+                if len(keyvals) != 2:
+                    continue
+                group, p2p = keyvals[0], keyvals[1]
+                l2vpn_name = '{}-{}'.format(group, p2p)
+                if del_table:
+                    self.__run_command(table,
+                        "vtysh -c 'configure terminal' "
+                        "-c 'no l2vpn {}'".format(l2vpn_name))
+                else:
+                    entry = self.config_db.get_entry('L2VPN_XCONNECT_GROUP',
+                                                     (group, p2p)) or {}
+                    if entry.get('enabled', 'true') == 'false':
+                        self.__run_command(table,
+                            "vtysh -c 'configure terminal' "
+                            "-c 'no l2vpn {}'".format(l2vpn_name))
+                    else:
+                        ac_if = entry.get('interface')
+                        peer = entry.get('peer-address')
+                        pw_id = entry.get('pw-id')
+                        if ac_if is None or peer is None or pw_id is None:
+                            # config ainda incompleta — sera renderizada
+                            # quando os demais leaves chegarem ao CONFIG_DB.
+                            continue
+                        pw_if = ('pw' + str(pw_id))[:15]
+                        cmds = ['configure terminal',
+                                'l2vpn {} type vpls'.format(l2vpn_name)]
+                        if entry.get('mtu'):
+                            cmds.append('mtu {}'.format(entry['mtu']))
+                        cmds.append('member interface {}'.format(ac_if))
+                        cmds.append('member pseudowire {}'.format(pw_if))
+                        cmds.append('neighbor lsr-id {}'.format(peer))
+                        cmds.append('pw-id {}'.format(pw_id))
+                        pw_cls = entry.get('pw-class')
+                        if pw_cls:
+                            pwc = self.config_db.get_entry('L2VPN_PW_CLASS',
+                                                           pw_cls) or {}
+                            cw = pwc.get('control-word')
+                            if cw is not None:
+                                cmds.append('control-word {}'.format(
+                                    'include' if cw == 'true' else 'exclude'))
+                            tmode = pwc.get('transport-mode')
+                            if tmode:
+                                cmds.append('pw-type {}'.format(
+                                    'ethernet-tagged' if tmode == 'vlan'
+                                    else 'ethernet'))
+                        command = 'vtysh ' + ' '.join(
+                            "-c '{}'".format(c) for c in cmds)
+                        if not self.__run_command(table, command):
+                            syslog.syslog(syslog.LOG_ERR,
+                                'failed running l2vpn xconnect command')
+                            continue
             elif table == 'EVPN_GLOBALS':
                 vrf = prefix
                 router = 'router bgp' if vrf == 'default' \
