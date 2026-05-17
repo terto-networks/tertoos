@@ -485,6 +485,14 @@ echo "logrotate-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
 # Copy systemd-journald configuration files
 sudo cp -f $IMAGE_CONFIGS/systemd/journald.conf $FILESYSTEM_ROOT/etc/systemd/
 
+# TertoOS: mascara o systemd-ssh-generator. Ele tenta SSH-over-VSOCK,
+# falha em VMs sem device vsock (EVE-NG, a VM KVM do build) e inunda o
+# console serial com "Failed to query local AF_VSOCK CID" a cada
+# daemon-reload — o que corrompe o login pexpect do check_install.py
+# durante o build e polui a console do operador.
+sudo mkdir -p $FILESYSTEM_ROOT/etc/systemd/system-generators
+sudo ln -sf /dev/null $FILESYSTEM_ROOT/etc/systemd/system-generators/systemd-ssh-generator
+
 # Copy interfaces configuration files and templates
 sudo cp $IMAGE_CONFIGS/interfaces/interfaces-config.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
 sudo cp $IMAGE_CONFIGS/interfaces/interfaces-config.sh $FILESYSTEM_ROOT/usr/bin/
@@ -900,6 +908,20 @@ psample
 act_sample
 EOF
 {% endif %}
+
+# TertoOS: plano de forwarding MPLS box-wide. Carrega os modulos do
+# kernel, dimensiona a tabela de labels (SRGB + LDP + PW cabem de
+# sobra) e liga net.mpls.conf.default.input — herdado por toda
+# interface criada no boot (front-panel via syncd). Sem sysctl manual.
+sudo tee -a $FILESYSTEM_ROOT/etc/modules-load.d/modules.conf > /dev/null <<EOF
+mpls_router
+mpls_iptunnel
+EOF
+sudo mkdir -p $FILESYSTEM_ROOT/etc/sysctl.d
+sudo tee $FILESYSTEM_ROOT/etc/sysctl.d/90-tertoos-mpls.conf > /dev/null <<EOF
+net.mpls.platform_labels = 1048575
+net.mpls.conf.default.input = 1
+EOF
 
 ## Bind docker path
 if [[ $MULTIARCH_QEMU_ENVIRON == y || $CROSS_BUILD_ENVIRON == y ]]; then
