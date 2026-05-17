@@ -485,6 +485,14 @@ echo "logrotate-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
 # Copy systemd-journald configuration files
 sudo cp -f $IMAGE_CONFIGS/systemd/journald.conf $FILESYSTEM_ROOT/etc/systemd/
 
+# TertoOS: mascara o systemd-ssh-generator. Ele tenta SSH-over-VSOCK,
+# falha em VMs sem device vsock (EVE-NG, a VM KVM do build) e inunda o
+# console serial com "Failed to query local AF_VSOCK CID" a cada
+# daemon-reload — o que corrompe o login pexpect do check_install.py
+# durante o build e polui a console do operador.
+sudo mkdir -p $FILESYSTEM_ROOT/etc/systemd/system-generators
+sudo ln -sf /dev/null $FILESYSTEM_ROOT/etc/systemd/system-generators/systemd-ssh-generator
+
 # Copy interfaces configuration files and templates
 sudo cp $IMAGE_CONFIGS/interfaces/interfaces-config.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
 sudo cp $IMAGE_CONFIGS/interfaces/interfaces-config.sh $FILESYSTEM_ROOT/usr/bin/
