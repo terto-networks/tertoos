@@ -857,6 +857,11 @@ install_deb_package $debs_path/terto-horizon-cli_*.deb
 ## /etc/shells must list the new shell before chsh accepts it (PAM check).
 echo /usr/bin/tertoos | sudo tee -a $FILESYSTEM_ROOT/etc/shells >/dev/null
 sudo LANG=C chroot $FILESYSTEM_ROOT chsh -s /usr/bin/tertoos {{sonicadmin_user}}
+
+## TertoOS — Horizon NOS-side agent (host/systemd). Publica telemetria
+## (heartbeat + SR-TE) ao Edge via NATS. rules/terto-horizon-agent.mk
+## constroi o .deb; a instalacao no fsroot do host acontece aqui.
+install_deb_package $debs_path/terto-horizon-agent_*.deb
 {% endif %}
 
 ## Run depmod command for target kernel modules
