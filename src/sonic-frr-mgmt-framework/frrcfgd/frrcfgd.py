@@ -2731,6 +2731,27 @@ class BGPConfigDaemon:
     def __run_command(table, command, daemons = None):
         return g_run_command(table, command, True, daemons)
 
+    @staticmethod
+    def __vtysh_config(cmds):
+        # Executa comandos de config via o binario vtysh. vtysh mantem
+        # o contexto de node entre os -c; o proxy BgpdClientMgr nao
+        # sustenta a transicao para sub-nodes como `member pseudowire`.
+        argv = ['/usr/bin/vtysh', '-c', 'configure terminal']
+        for c in cmds:
+            argv += ['-c', c]
+        try:
+            r = subprocess.run(argv, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=20)
+        except Exception as e:
+            syslog.syslog(syslog.LOG_ERR, 'vtysh exec failed: {}'.format(e))
+            return False
+        out = r.stdout.decode(errors='replace') if r.stdout else ''
+        if r.returncode != 0:
+            syslog.syslog(syslog.LOG_ERR,
+                'vtysh rc={}: {}'.format(r.returncode, out[:400]))
+            return False
+        return True
+
     def metadata_handler(self, table, key, data):
         if key != 'localhost':
             syslog.syslog(syslog.LOG_DEBUG, 'not localhost data update')
@@ -4338,16 +4359,12 @@ class BGPConfigDaemon:
                 group, p2p = keyvals[0], keyvals[1]
                 l2vpn_name = '{}-{}'.format(group, p2p)
                 if del_table:
-                    self.__run_command(table,
-                        "vtysh -c 'configure terminal' "
-                        "-c 'no l2vpn {}'".format(l2vpn_name))
+                    self.__vtysh_config(['no l2vpn {} type vpls'.format(l2vpn_name)])
                 else:
                     entry = self.config_db.get_entry('L2VPN_XCONNECT_GROUP',
                                                      (group, p2p)) or {}
                     if entry.get('enabled', 'true') == 'false':
-                        self.__run_command(table,
-                            "vtysh -c 'configure terminal' "
-                            "-c 'no l2vpn {}'".format(l2vpn_name))
+                        self.__vtysh_config(['no l2vpn {} type vpls'.format(l2vpn_name)])
                     else:
                         ac_if = entry.get('interface')
                         peer = entry.get('peer-address')
@@ -4357,8 +4374,7 @@ class BGPConfigDaemon:
                             # quando os demais leaves chegarem ao CONFIG_DB.
                             continue
                         pw_if = ('pw' + str(pw_id))[:15]
-                        cmds = ['configure terminal',
-                                'l2vpn {} type vpls'.format(l2vpn_name)]
+                        cmds = ['l2vpn {} type vpls'.format(l2vpn_name)]
                         if entry.get('mtu'):
                             cmds.append('mtu {}'.format(entry['mtu']))
                         cmds.append('member interface {}'.format(ac_if))
@@ -4373,14 +4389,10 @@ class BGPConfigDaemon:
                             if cw is not None:
                                 cmds.append('control-word {}'.format(
                                     'include' if cw == 'true' else 'exclude'))
-                            tmode = pwc.get('transport-mode')
-                            if tmode:
-                                cmds.append('pw-type {}'.format(
-                                    'ethernet-tagged' if tmode == 'vlan'
-                                    else 'ethernet'))
-                        command = 'vtysh ' + ' '.join(
-                            "-c '{}'".format(c) for c in cmds)
-                        if not self.__run_command(table, command):
+                            # FRR ldpd nao expoe `pw-type` no node
+                            # pseudowire; transport-mode da pw-class
+                            # fica sem equivalente (VC type = ethernet).
+                        if not self.__vtysh_config(cmds):
                             syslog.syslog(syslog.LOG_ERR,
                                 'failed running l2vpn xconnect command')
                             continue
