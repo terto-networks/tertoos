@@ -656,6 +656,20 @@ sudo cp $IMAGE_CONFIGS/hostname/hostname-config.service $FILESYSTEM_ROOT_USR_LIB
 echo "hostname-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
 sudo cp $IMAGE_CONFIGS/hostname/hostname-config.sh $FILESYSTEM_ROOT/usr/bin/
 
+# TertoOS: habilita o FRR management framework (frrcfgd) — roda antes
+# do container bgp para que o supervisord dele suba os daemons FRR.
+sudo cp $IMAGE_CONFIGS/frrmgmt/frr-mgmt-config.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
+echo "frr-mgmt-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
+sudo cp $IMAGE_CONFIGS/frrmgmt/frr-mgmt-config.sh $FILESYSTEM_ROOT/usr/bin/
+sudo chmod +x $FILESYSTEM_ROOT/usr/bin/frr-mgmt-config.sh
+
+# TertoOS: show-proxy no host — o tertoos-cli (no container
+# mgmt-framework, sem `show`/`vtysh`) repassa comandos de leitura.
+sudo cp $IMAGE_CONFIGS/tertooscli/tertoos-showd.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
+echo "tertoos-showd.service" | sudo tee -a $GENERATED_SERVICE_FILE
+sudo cp $IMAGE_CONFIGS/tertooscli/tertoos-showd $FILESYSTEM_ROOT/usr/bin/
+sudo chmod +x $FILESYSTEM_ROOT/usr/bin/tertoos-showd
+
 # Copy banner configuration scripts
 sudo cp $IMAGE_CONFIGS/bannerconfig/banner-config.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
 echo "banner-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
