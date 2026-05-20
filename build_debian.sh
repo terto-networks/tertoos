@@ -96,6 +96,21 @@ sudo LANG=C chroot $FILESYSTEM_ROOT /bin/bash -c "echo '$HOSTNAME' > /etc/hostna
 sudo LANG=C chroot $FILESYSTEM_ROOT /bin/bash -c "echo '127.0.0.1       $HOSTNAME' >> /etc/hosts"
 sudo LANG=C chroot $FILESYSTEM_ROOT /bin/bash -c "echo '127.0.0.1       localhost' >> /etc/hosts"
 
+## Rebrand V0.4 — override default Debian /etc/issue and /etc/issue.net.
+## agetty (console) and sshd (SSH) interpretam \n e \l no momento do login
+## (nodename e tty line). banner-config.sh ainda pode sobrescrever quando
+## CONFIG_DB.BANNER_MESSAGE|global.state == "enabled" — esse fallback é o
+## default mostrado pré-login na primeira boot e quando o banner dinâmico
+## está desabilitado.
+sudo tee $FILESYSTEM_ROOT/etc/issue >/dev/null <<'EOF'
+TertoOS \n \l
+
+EOF
+sudo tee $FILESYSTEM_ROOT/etc/issue.net >/dev/null <<'EOF'
+TertoOS \n
+
+EOF
+
 ## Config basic fstab
 sudo LANG=C chroot $FILESYSTEM_ROOT /bin/bash -c 'echo "proc /proc proc defaults 0 0" >> /etc/fstab'
 sudo LANG=C chroot $FILESYSTEM_ROOT /bin/bash -c 'echo "sysfs /sys sysfs defaults 0 0" >> /etc/fstab'
