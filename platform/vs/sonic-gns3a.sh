@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# This script creates a .gns3a SONiC appliance file
+# This script creates a .gns3a TertoOS appliance file
 IMGFILE="sonic-vs.img"
 RELEASE="latest"
 
 usage() {
-    echo "`basename $0` [ -r <ReleaseNumber> ] -b <SONiC VS image: sonic-vs.img>"
+    echo "`basename $0` [ -r <ReleaseNumber> ] -b <TertoOS VS image: sonic-vs.img>"
     echo "e.g.: `basename $0` -r 1.1 -b <store_path>/sonic-vs.img"
     exit 0
 }
@@ -32,23 +32,23 @@ fi
 
 MD5SUMIMGFILE=`md5sum  ${IMGFILE} | cut -f 1 -d " "`
 LENIMGFILE=`stat -c %s ${IMGFILE}`
-GNS3APPNAME="SONiC-${RELEASE}.gns3a"
+GNS3APPNAME="TertoOS-${RELEASE}.gns3a"
 NAMEIMGFILE=`basename $IMGFILE`
 
 echo "
 {
-    \"name\": \"SONiC\",
+    \"name\": \"TertoOS\",
     \"category\": \"router\",
-    \"description\": \"SONiC Virtual Switch/Router\",
-    \"vendor_name\": \"SONiC\",
-    \"vendor_url\": \"https://sonic-net.github.io/SONiC/\",
-    \"product_name\": \"SONiC\",
-    \"product_url\": \"https://sonic-net.github.io/SONiC/\",
+    \"description\": \"TertoOS Virtual Switch/Router (SONiC-based)\",
+    \"vendor_name\": \"Terto Networks\",
+    \"vendor_url\": \"https://github.com/terto-networks/\",
+    \"product_name\": \"TertoOS\",
+    \"product_url\": \"https://github.com/terto-networks/\",
     \"registry_version\": 3,
     \"status\": \"experimental\",
-    \"maintainer\": \"SONiC\",
+    \"maintainer\": \"Terto Networks\",
     \"maintainer_email\": \"sonicproject@googlegroups.com\",
-    \"usage\": \"Supports SONiC release: ${RELEASE}\",
+    \"usage\": \"Supports TertoOS release: ${RELEASE}\",
     \"first_port_name\": \"eth0\",
     \"qemu\": {
         \"adapter_type\": \"e1000\",
