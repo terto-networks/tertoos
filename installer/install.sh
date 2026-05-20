@@ -46,14 +46,14 @@ read_conf_file() {
 set -e
 
 if [ -d "/etc/sonic" ]; then
-    echo "Installing SONiC in SONiC"
+    echo "Installing TertoOS in TertoOS"
     install_env="sonic"
 elif grep -Fxqs "DISTRIB_ID=onie" /etc/lsb-release > /dev/null
 then
-    echo "Installing SONiC in ONIE"
+    echo "Installing TertoOS in ONIE"
     install_env="onie"
 else
-    echo "Installing SONiC in BUILD"
+    echo "Installing TertoOS in BUILD"
     install_env="build"
 fi
 
@@ -155,8 +155,8 @@ demo_part_size=$ONIE_IMAGE_PART_SIZE
 image_version="%%IMAGE_VERSION%%"
 timestamp="$(date -u +%Y%m%d)"
 
-demo_volume_label="SONiC-${demo_type}"
-demo_volume_revision_label="SONiC-${demo_type}-${image_version}"
+demo_volume_label="TertoOS-${demo_type}"
+demo_volume_revision_label="TertoOS-${demo_type}-${image_version}"
 
 
 . ./default_platform.conf
@@ -178,18 +178,18 @@ elif [ "$install_env" = "sonic" ]; then
     eval running_sonic_revision="$(cat /proc/cmdline | sed -n 's/^.*loop=\/*image-\(\S\+\)\/.*$/\1/p')"
     # Verify SONiC image exists
     if [ ! -d "$demo_mnt/image-$running_sonic_revision" ]; then
-        echo "ERROR: SONiC installation is corrupted: path $demo_mnt/image-$running_sonic_revision doesn't exist"
+        echo "ERROR: TertoOS installation is corrupted: path $demo_mnt/image-$running_sonic_revision doesn't exist"
         exit 1
     fi
     # Prevent installing existing SONiC if it is running
     if [ "$image_dir" = "image-$running_sonic_revision" ]; then
-        echo "Not installing SONiC version $running_sonic_revision, as current running SONiC has the same version"
+        echo "Not installing TertoOS version $running_sonic_revision, as current running TertoOS has the same version"
         exit 0
     fi
     # Remove extra SONiC images if any
     for f in $demo_mnt/image-* ; do
         if [ -d $f ] && [ "$f" != "$demo_mnt/image-$running_sonic_revision" ] && [ "$f" != "$demo_mnt/$image_dir" ]; then
-            echo "Removing old SONiC installation $f"
+            echo "Removing old TertoOS installation $f"
             rm -rf $f
         fi
     done
@@ -204,7 +204,7 @@ else
     mount -t auto -o loop $demo_dev $demo_mnt
 fi
 
-echo "Installing SONiC to $demo_mnt/$image_dir"
+echo "Installing TertoOS to $demo_mnt/$image_dir"
 
 # Create target directory or clean it up if exists
 if [ -d $demo_mnt/$image_dir ]; then
@@ -212,7 +212,7 @@ if [ -d $demo_mnt/$image_dir ]; then
     rm -rf $demo_mnt/$image_dir/*
 else
     mkdir $demo_mnt/$image_dir || {
-        echo "Error: Unable to create SONiC directory"
+        echo "Error: Unable to create TertoOS directory"
         exit 1
     }
 fi
