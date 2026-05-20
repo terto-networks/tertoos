@@ -30,7 +30,7 @@ on_error()
 
 create_disk()
 {
-    echo "Creating SONiC kvm disk : $DISK of size $DISK_SIZE GB"
+    echo "Creating TertoOS kvm disk : $DISK of size $DISK_SIZE GB"
 	qemu-img create -f qcow2 $DISK ${DISK_SIZE}G
 }
 
@@ -84,7 +84,7 @@ kvm_log=$(mktemp)
 trap on_exit EXIT
 trap on_error ERR
 
-echo "Installing SONiC"
+echo "Installing TertoOS"
 
 /usr/bin/kvm -m $MEM \
     -name "onie" \
@@ -113,7 +113,7 @@ echo "to kill kvm:  sudo kill $kvm_pid"
 
 kill $kvm_pid
 
-echo "Booting up SONiC"
+echo "Booting up TertoOS"
 
 /usr/bin/kvm -m $MEM \
     -name "onie" \
