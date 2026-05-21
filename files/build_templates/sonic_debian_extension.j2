@@ -945,6 +945,38 @@ net.mpls.platform_labels = 1048575
 net.mpls.conf.default.input = 1
 EOF
 
+# tertoos: a sysctl.d acima nao basta (o modulo mpls carrega depois do
+# systemd-sysctl, entao default.input nao pega e as interfaces front-panel
+# nascem com input=0). Service oneshot roda apos o swss, garante o modulo
+# e habilita net.mpls.conf.<if>.input em todas as interfaces de dados.
+sudo tee $FILESYSTEM_ROOT/usr/local/bin/tertoos-mpls-enable.sh > /dev/null <<'MPLSSH'
+#!/bin/bash
+modprobe mpls_router 2>/dev/null || true
+modprobe mpls_iptunnel 2>/dev/null || true
+sysctl -w net.mpls.platform_labels=1048575 2>/dev/null || true
+sysctl -w net.mpls.conf.default.input=1 2>/dev/null || true
+# espera o syncd criar as interfaces front-panel (ate ~60s)
+for _t in $(seq 1 30); do ls /sys/class/net/ 2>/dev/null | grep -q '^Ethernet' && break; sleep 2; done
+for ifc in $(ls /sys/class/net/ 2>/dev/null | grep -E '^(Ethernet|PortChannel|Vlan|Loopback)'); do
+  sysctl -w net.mpls.conf.$ifc.input=1 2>/dev/null || true
+done
+MPLSSH
+sudo chmod +x $FILESYSTEM_ROOT/usr/local/bin/tertoos-mpls-enable.sh
+sudo tee $FILESYSTEM_ROOT/etc/systemd/system/tertoos-mpls-enable.service > /dev/null <<'MPLSSVC'
+[Unit]
+Description=TertoOS enable MPLS forwarding input on all interfaces
+After=swss.service syncd.service
+Wants=swss.service
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/local/bin/tertoos-mpls-enable.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+MPLSSVC
+sudo LANG=C chroot $FILESYSTEM_ROOT systemctl enable tertoos-mpls-enable.service
+
 ## Bind docker path
 if [[ $MULTIARCH_QEMU_ENVIRON == y || $CROSS_BUILD_ENVIRON == y ]]; then
     sudo mkdir -p $FILESYSTEM_ROOT/dockerfs
