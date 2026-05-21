@@ -3,8 +3,8 @@
 CURRENT_HOSTNAME=$(hostname)
 HOSTNAME=$(sonic-db-cli CONFIG_DB HGET 'DEVICE_METADATA|localhost' hostname)
 
-if [ -z "$HOSTNAME" ] ; then
-       echo "Missing hostname in the config file, setting to default 'tertoos'"
+if [ -z "$HOSTNAME" ] || [ "$HOSTNAME" = "sonic" ] ; then
+       echo "Hostname unset or stock default 'sonic' — forcing TertoOS default 'tertoos'"
        HOSTNAME='tertoos'
 fi
 

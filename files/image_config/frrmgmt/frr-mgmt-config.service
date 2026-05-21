@@ -1,0 +1,15 @@
+[Unit]
+Description=TertoOS enable FRR management framework (frrcfgd)
+Requires=config-setup.service
+After=config-setup.service
+BindsTo=sonic.target
+After=sonic.target
+Before=bgp.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/frr-mgmt-config.sh
+
+[Install]
+WantedBy=sonic.target
