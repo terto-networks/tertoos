@@ -47,7 +47,7 @@ def generate_l3_config(data):
     return data;
 
 def generate_t1_sample_config(data):
-    data['DEVICE_METADATA']['localhost']['hostname'] = 'sonic'
+    data['DEVICE_METADATA']['localhost']['hostname'] = 'tertoos'
     data['DEVICE_METADATA']['localhost']['type'] = 'LeafRouter'
     data['DEVICE_METADATA']['localhost']['bgp_asn'] = '65100'
     data['LOOPBACK_INTERFACE'] = {"Loopback0": {},
@@ -151,7 +151,7 @@ def generate_t1_smartswitch_switch_sample_config(data, ss_config):
     return data
 
 def generate_t1_smartswitch_dpu_sample_config(data, ss_config):
-    data['DEVICE_METADATA']['localhost']['hostname'] = 'sonic'
+    data['DEVICE_METADATA']['localhost']['hostname'] = 'tertoos'
     data['DEVICE_METADATA']['localhost']['switch_type'] = 'dpu'
     data['DEVICE_METADATA']['localhost']['type'] = 'SmartSwitchDPU'
     data['DEVICE_METADATA']['localhost']['subtype'] = 'SmartSwitch'
@@ -217,7 +217,7 @@ def generate_t1_smartswitch_sample_config(data):
 def generate_empty_config(data):
     new_data = {'DEVICE_METADATA': data['DEVICE_METADATA']}
     if 'hostname' not in new_data['DEVICE_METADATA']['localhost']:
-        new_data['DEVICE_METADATA']['localhost']['hostname'] = 'sonic'
+        new_data['DEVICE_METADATA']['localhost']['hostname'] = 'tertoos'
     if 'type' not in new_data['DEVICE_METADATA']['localhost']:
         new_data['DEVICE_METADATA']['localhost']['type'] = 'LeafRouter'
     return new_data
