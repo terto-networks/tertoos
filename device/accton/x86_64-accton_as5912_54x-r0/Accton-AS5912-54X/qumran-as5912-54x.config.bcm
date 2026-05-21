@@ -1,0 +1,16 @@
+# TertoOS — AS5912-54X BCM88375 Qumran. PROVISIONAL SDK config.
+#
+# Real values must be sourced from one of:
+#   - ONL packages/platforms/accton/x86-64/as5912-54x/platform-config/r0/src/lib/
+#   - Broadcom SDK reference designs for Qumran BCM88375 (BCM SAI release notes)
+#   - Edgecore vendor BSP (preferred path — request via Accton support)
+#
+# This stub exists so the .deb build doesn't fail. The image will boot but syncd
+# will not bring the ASIC up until this file has the correct port/lane/serdes config.
+
+os=unix
+arl_clean_timeout_usec=15000000
+
+# TODO: replace placeholders below with BCM88375 actual values from SDK reference.
+# polarity_rx, polarity_tx, lane_swap, port_init_speed, serdes_preemphasis,
+# soc_family identification (88375), memlist sizes for FIB/LPM/L2 etc.

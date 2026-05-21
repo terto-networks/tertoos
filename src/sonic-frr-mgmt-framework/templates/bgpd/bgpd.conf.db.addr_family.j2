@@ -25,6 +25,37 @@
 {% if 'import_vrf_route_map' in af_val %}
   import vrf route-map {{af_val['import_vrf_route_map']}}
 {% endif %}
+{# S15 — L3VPN BGP/MPLS VPN leaves (#29) #}
+{% if 'redistribute_connected' in af_val and af_val['redistribute_connected'] == 'true' %}
+  redistribute connected
+{% endif %}
+{% if 'redistribute_static' in af_val and af_val['redistribute_static'] == 'true' %}
+  redistribute static
+{% endif %}
+{% if 'label_vpn_export_auto' in af_val and af_val['label_vpn_export_auto'] == 'true' %}
+  label vpn export auto
+{% endif %}
+{% if 'label_vpn_export' in af_val %}
+  label vpn export {{af_val['label_vpn_export']}}
+{% endif %}
+{% if 'rd_vpn_export' in af_val %}
+  rd vpn export {{af_val['rd_vpn_export']}}
+{% endif %}
+{% if 'rt_vpn_both' in af_val %}
+  rt vpn both {{af_val['rt_vpn_both']}}
+{% endif %}
+{% if 'rt_vpn_export' in af_val %}
+  rt vpn export {{af_val['rt_vpn_export']}}
+{% endif %}
+{% if 'rt_vpn_import' in af_val %}
+  rt vpn import {{af_val['rt_vpn_import']}}
+{% endif %}
+{% if 'export_vpn' in af_val and af_val['export_vpn'] == 'true' %}
+  export vpn
+{% endif %}
+{% if 'import_vpn' in af_val and af_val['import_vpn'] == 'true' %}
+  import vpn
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endif %}

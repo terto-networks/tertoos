@@ -1930,6 +1930,9 @@ class BGPConfigDaemon:
                          ('rt_vpn_both',                                '{no:no-prefix}rt vpn both {}'),
                          ('export_vpn',                                 '{no:no-prefix}export vpn', ['true','false']),
                          ('import_vpn',                                 '{no:no-prefix}import vpn', ['true','false']),
+                         # S15 — L3VPN BGP/MPLS service label (#29)
+                         ('label_vpn_export_auto',                      '{no:no-prefix}label vpn export auto', ['true','false']),
+                         ('label_vpn_export',                           '{no:no-prefix}label vpn export {}'),
                          ('redistribute_connected',                     '{no:no-prefix}redistribute connected', ['true','false']),
                          ('redistribute_static_rmap',                   '{no:no-prefix}redistribute static route-map {}'),
                          ('rmap_vpn_export',                            '{no:no-prefix}route-map vpn export {}'),
@@ -2108,7 +2111,16 @@ class BGPConfigDaemon:
                              ('distance-all',                  '{no:no-prefix}distance {}'),
                              ('distance-external',             '{no:no-prefix}distance ospf external {}'),
                              ('distance-inter-area',           '{no:no-prefix}distance ospf inter-area {}'),
-                             ('distance-intra-area',           '{no:no-prefix}distance ospf intra-area {}')]
+                             ('distance-intra-area',           '{no:no-prefix}distance ospf intra-area {}'),
+                             # TertoOS S8 — Segment Routing globals (#24).
+                             # capability opaque must be enabled for SR opaque
+                             # LSAs to flood — FRR 10.5.1 does not auto-enable.
+                             ('segment_routing',               '{no:no-prefix}capability opaque', ['true', 'false']),
+                             ('segment_routing',               '{no:no-prefix}segment-routing on', ['true', 'false']),
+                             (['sr_global_block_lower', 'sr_global_block_upper'],
+                                                               '{no:no-prefix}segment-routing global-block {} {}'),
+                             (['sr_local_block_lower',  'sr_local_block_upper'],
+                                                               '{no:no-prefix}segment-routing local-block {} {}')]
 
     ospfv2_area_key_map = [('stub',                     '{no:no-prefix}area {} stub'),
                            ('stub-no-summary',          '{no:no-prefix}area {} stub no-summary'),
@@ -2251,14 +2263,10 @@ class BGPConfigDaemon:
         ('keepalive', '{no:no-prefix}neighbor {} keepalive {}'),
     ]
 
-    # TertoOS S8 — OSPF SR globals (added to ospfv2_global_key_map at runtime
-    # via merging is impractical; emit as separate key_map entries for the
-    # OSPFv2_ROUTER table).
-    ospfv2_sr_extra_key_map = [
-        ('segment_routing',          '{no:no-prefix}segment-routing on', ['true','false']),
-        ('sr_global_block_lower',    '{no:no-prefix}segment-routing global-block {} {}',
-                                     None),
-    ]
+    # TertoOS S8 — OSPF SR prefix-SID (#24). Globals (segment-routing on,
+    # SRGB/SRLB) are merged into ospfv2_global_key_map above so they ride
+    # the same OSPFV2_ROUTER handler. Prefix-SID is per-prefix so it gets
+    # its own key_map keyed on the OSPFV2_PREFIX_SID table.
     ospfv2_prefix_sid_key_map = [
         ('index',         '{no:no-prefix}segment-routing prefix {} index {}'),
         ('explicit_null', '{no:no-prefix}segment-routing prefix {} explicit-null', ['true','false']),
@@ -2684,6 +2692,8 @@ class BGPConfigDaemon:
             ('L2VPN_VFI', self.bgp_table_handler_common),
             ('L2VPN_BD_AC', self.bgp_table_handler_common),
             ('L2VPN_BD_NEIGHBOR', self.bgp_table_handler_common),
+            ('L2VPN_PW_CLASS', self.bgp_table_handler_common),
+            ('L2VPN_XCONNECT_GROUP', self.bgp_table_handler_common),
             ('EVPN_GLOBALS', self.bgp_table_handler_common),
             ('OSPFV2_PREFIX_SID', self.bgp_table_handler_common),
             ('OSPFV3_PREFIX_SID', self.bgp_table_handler_common),
@@ -2720,6 +2730,27 @@ class BGPConfigDaemon:
     @staticmethod
     def __run_command(table, command, daemons = None):
         return g_run_command(table, command, True, daemons)
+
+    @staticmethod
+    def __vtysh_config(cmds):
+        # Executa comandos de config via o binario vtysh. vtysh mantem
+        # o contexto de node entre os -c; o proxy BgpdClientMgr nao
+        # sustenta a transicao para sub-nodes como `member pseudowire`.
+        argv = ['/usr/bin/vtysh', '-c', 'configure terminal']
+        for c in cmds:
+            argv += ['-c', c]
+        try:
+            r = subprocess.run(argv, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=20)
+        except Exception as e:
+            syslog.syslog(syslog.LOG_ERR, 'vtysh exec failed: {}'.format(e))
+            return False
+        out = r.stdout.decode(errors='replace') if r.stdout else ''
+        if r.returncode != 0:
+            syslog.syslog(syslog.LOG_ERR,
+                'vtysh rc={}: {}'.format(r.returncode, out[:400]))
+            return False
+        return True
 
     def metadata_handler(self, table, key, data):
         if key != 'localhost':
@@ -4300,6 +4331,71 @@ class BGPConfigDaemon:
                 if not key_map.run_command(self, table, data, cmd_prefix, peer):
                     syslog.syslog(syslog.LOG_ERR, 'failed running vfi neighbor command')
                     continue
+            # TertoOS S15 — VPWS point-to-point (xconnect) + pw-class.
+            elif table == 'L2VPN_PW_CLASS':
+                # FRR ldpd nao tem objeto pw-class: control-word / pw-type
+                # vivem no membro pseudowire. Aqui so re-aplicamos os
+                # xconnects que referenciam esta pw-class para propagar a
+                # mudanca de atributo ao membro pseudowire deles.
+                pwc_name = prefix
+                for xkey, xdata in self.config_db.get_table('L2VPN_XCONNECT_GROUP').items():
+                    if xdata is None or xdata.get('pw-class') != pwc_name:
+                        continue
+                    upd = {k: CachedDataWithOp(v, CachedDataWithOp.OP_ADD)
+                           for k, v in xdata.items()}
+                    self.bgp_message.put((self.config_db.serialize_key(xkey),
+                                          False, 'L2VPN_XCONNECT_GROUP', upd))
+                for _, dval in data.items():
+                    dval.status = CachedDataWithOp.STAT_SUCC
+            elif table == 'L2VPN_XCONNECT_GROUP':
+                # key: <group>|<p2p>  -> FRR l2vpn <group>-<p2p> type vpls.
+                # ldpd faz a sinalizacao tLDP do PW automaticamente para o
+                # neighbor lsr-id (requer `mpls ldp` ativo). Forwarding no
+                # dataplane e' SAI-gated (ver 13-config-l2vpn.xml).
+                full = prefix if key is None else prefix + '|' + key
+                keyvals = full.split('|')
+                if len(keyvals) != 2:
+                    continue
+                group, p2p = keyvals[0], keyvals[1]
+                l2vpn_name = '{}-{}'.format(group, p2p)
+                if del_table:
+                    self.__vtysh_config(['no l2vpn {} type vpls'.format(l2vpn_name)])
+                else:
+                    entry = self.config_db.get_entry('L2VPN_XCONNECT_GROUP',
+                                                     (group, p2p)) or {}
+                    if entry.get('enabled', 'true') == 'false':
+                        self.__vtysh_config(['no l2vpn {} type vpls'.format(l2vpn_name)])
+                    else:
+                        ac_if = entry.get('interface')
+                        peer = entry.get('peer-address')
+                        pw_id = entry.get('pw-id')
+                        if ac_if is None or peer is None or pw_id is None:
+                            # config ainda incompleta — sera renderizada
+                            # quando os demais leaves chegarem ao CONFIG_DB.
+                            continue
+                        pw_if = ('pw' + str(pw_id))[:15]
+                        cmds = ['l2vpn {} type vpls'.format(l2vpn_name)]
+                        if entry.get('mtu'):
+                            cmds.append('mtu {}'.format(entry['mtu']))
+                        cmds.append('member interface {}'.format(ac_if))
+                        cmds.append('member pseudowire {}'.format(pw_if))
+                        cmds.append('neighbor lsr-id {}'.format(peer))
+                        cmds.append('pw-id {}'.format(pw_id))
+                        pw_cls = entry.get('pw-class')
+                        if pw_cls:
+                            pwc = self.config_db.get_entry('L2VPN_PW_CLASS',
+                                                           pw_cls) or {}
+                            cw = pwc.get('control-word')
+                            if cw is not None:
+                                cmds.append('control-word {}'.format(
+                                    'include' if cw == 'true' else 'exclude'))
+                            # FRR ldpd nao expoe `pw-type` no node
+                            # pseudowire; transport-mode da pw-class
+                            # fica sem equivalente (VC type = ethernet).
+                        if not self.__vtysh_config(cmds):
+                            syslog.syslog(syslog.LOG_ERR,
+                                'failed running l2vpn xconnect command')
+                            continue
             elif table == 'EVPN_GLOBALS':
                 vrf = prefix
                 router = 'router bgp' if vrf == 'default' \

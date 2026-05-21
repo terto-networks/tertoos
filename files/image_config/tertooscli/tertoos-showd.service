@@ -1,0 +1,13 @@
+[Unit]
+Description=TertoOS show proxy (host-side exec for the in-container CLI)
+After=database.service
+BindsTo=sonic.target
+After=sonic.target
+
+[Service]
+ExecStart=/usr/bin/tertoos-showd
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=sonic.target

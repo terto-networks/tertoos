@@ -656,6 +656,20 @@ sudo cp $IMAGE_CONFIGS/hostname/hostname-config.service $FILESYSTEM_ROOT_USR_LIB
 echo "hostname-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
 sudo cp $IMAGE_CONFIGS/hostname/hostname-config.sh $FILESYSTEM_ROOT/usr/bin/
 
+# TertoOS: habilita o FRR management framework (frrcfgd) — roda antes
+# do container bgp para que o supervisord dele suba os daemons FRR.
+sudo cp $IMAGE_CONFIGS/frrmgmt/frr-mgmt-config.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
+echo "frr-mgmt-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
+sudo cp $IMAGE_CONFIGS/frrmgmt/frr-mgmt-config.sh $FILESYSTEM_ROOT/usr/bin/
+sudo chmod +x $FILESYSTEM_ROOT/usr/bin/frr-mgmt-config.sh
+
+# TertoOS: show-proxy no host — o tertoos-cli (no container
+# mgmt-framework, sem `show`/`vtysh`) repassa comandos de leitura.
+sudo cp $IMAGE_CONFIGS/tertooscli/tertoos-showd.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
+echo "tertoos-showd.service" | sudo tee -a $GENERATED_SERVICE_FILE
+sudo cp $IMAGE_CONFIGS/tertooscli/tertoos-showd $FILESYSTEM_ROOT/usr/bin/
+sudo chmod +x $FILESYSTEM_ROOT/usr/bin/tertoos-showd
+
 # Copy banner configuration scripts
 sudo cp $IMAGE_CONFIGS/bannerconfig/banner-config.service $FILESYSTEM_ROOT_USR_LIB_SYSTEMD_SYSTEM
 echo "banner-config.service" | sudo tee -a $GENERATED_SERVICE_FILE
@@ -846,6 +860,11 @@ install_deb_package $debs_path/terto-horizon-cli_*.deb
 
 echo /usr/bin/tertoos | sudo tee -a $FILESYSTEM_ROOT/etc/shells >/dev/null
 sudo LANG=C chroot $FILESYSTEM_ROOT chsh -s /usr/bin/tertoos {{sonicadmin_user}}
+
+## TertoOS — Horizon NOS-side agent (host/systemd). Publica telemetria
+## (heartbeat + SR-TE) ao Edge via NATS. rules/terto-horizon-agent.mk
+## constroi o .deb; a instalacao no fsroot do host acontece aqui.
+install_deb_package $debs_path/terto-horizon-agent_*.deb
 {% endif %}
 
 ## Run depmod command for target kernel modules
@@ -911,6 +930,20 @@ psample
 act_sample
 EOF
 {% endif %}
+
+# TertoOS: plano de forwarding MPLS box-wide. Carrega os modulos do
+# kernel, dimensiona a tabela de labels (SRGB + LDP + PW cabem de
+# sobra) e liga net.mpls.conf.default.input — herdado por toda
+# interface criada no boot (front-panel via syncd). Sem sysctl manual.
+sudo tee -a $FILESYSTEM_ROOT/etc/modules-load.d/modules.conf > /dev/null <<EOF
+mpls_router
+mpls_iptunnel
+EOF
+sudo mkdir -p $FILESYSTEM_ROOT/etc/sysctl.d
+sudo tee $FILESYSTEM_ROOT/etc/sysctl.d/90-tertoos-mpls.conf > /dev/null <<EOF
+net.mpls.platform_labels = 1048575
+net.mpls.conf.default.input = 1
+EOF
 
 ## Bind docker path
 if [[ $MULTIARCH_QEMU_ENVIRON == y || $CROSS_BUILD_ENVIRON == y ]]; then

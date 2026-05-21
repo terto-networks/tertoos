@@ -1,0 +1,31 @@
+[PATCH] SONiC-ONLY Enable pseudowires for LDP L2VPN
+
+From: TertoOS <eduardoterto@gmail.com>
+Date: Wed, 13 May 2026 21:30:00 +0000
+Subject: [PATCH] SONiC-ONLY Enable pseudowires for LDP L2VPN
+
+FRR ldpd ships with stubs for the l2vpn ATOM table but rejects
+activating a pseudowire unless --enable-pseudowires is given at
+configure time. TertoOS uses canonical-mpls validation to drive
+PE-to-PE pseudowires (PPPoE backhaul over MPLS), so the flag has
+to be on.
+
+Adds --enable-pseudowires alongside the existing --enable options.
+No other configure change.
+
+---
+ debian/rules | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/debian/rules b/debian/rules
+index 41b6c9f57..41b6c9f58 100755
+--- a/debian/rules
++++ b/debian/rules
+@@ -73,6 +73,7 @@ override_dh_auto_configure:
+ 		--disable-protobuf \
+ 		--disable-zeromq \
+ 		--enable-ospfapi \
++		--enable-pseudowires \
+ 		--enable-multipath=514 \
+ 		--enable-pcre2posix \
+ 		\
