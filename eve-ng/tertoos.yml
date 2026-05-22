@@ -1,0 +1,21 @@
+---
+# EVE-NG QEMU node template — TertoOS (NOS baseado em SONiC)
+# Coloque este arquivo em:  /opt/unetlab/html/templates/tertoos.yml
+# Imagem (qcow2) em:        /opt/unetlab/addons/qemu/tertoos-v0.5.0/virtioa.qcow2
+#
+# O nome do template ("tertoos") deve casar com o PREFIXO do diretório da imagem
+# (tertoos-<versao>). Após copiar, rode:  /opt/unetlab/wrappers/unl_wrapper -a fixpermissions
+type: qemu
+description: TertoOS — aggregation/PE NOS (SONiC-based) — labs v0.5.0
+name: TertoOS
+cpulimit: 1
+icon: Router.png
+cpu: 2
+ram: 4096
+ethernet: 8
+eth_format: eth{0}
+console: telnet
+shutdown: 1
+qemu_arch: x86_64
+qemu_nic: virtio-net-pci
+qemu_options: -machine type=pc,accel=kvm -serial mon:stdio -nographic -nodefaults -display none -vga none -rtc base=utc

@@ -1,0 +1,50 @@
+#!/bin/sh
+# E2E stub for vtysh — returns representative FRR output per `show` command.
+# `show l2vpn atom vc` agora é DINÂMICO: lê os fios L2 do CONFIG_DB
+# (redis-cfgdb DB4, tabela L2VPN_XCONNECT_GROUP) — assim config empurrada
+# pelo Horizon reflete na telemetria l2vc. Demais comandos seguem canned.
+case "$2" in
+  "show sr-te policy")
+    cat <<'T'
+Endpoint    Color  Name         BSID    Status
+--------    -----  ----         ----    ------
+10.255.0.4  10     pe4-via-pe2  24000   Active
+10.255.0.3  20     pe3-direct   24001   Active
+T
+    ;;
+  "show mpls ldp neighbor")
+    cat <<'T'
+AF   ID               State       Remote Address    Uptime
+ipv4 10.255.0.2       OPERATIONAL 10.255.0.2        1d02h03m
+ipv4 10.255.0.4       OPERATIONAL 10.255.0.4        04:11:22
+T
+    ;;
+  "show ip ospf neighbor json")
+    echo '{"neighbors":{"10.255.0.2":[{"nbrState":"Full/DR","ifaceName":"eth1:10.0.12.1","ifaceAddress":"10.0.12.1","upTime":"1d02h03m"}],"10.255.0.3":[{"nbrState":"Full/Backup","ifaceName":"eth2:10.0.13.1","ifaceAddress":"10.0.13.1","upTime":"05:42:11"}]}}'
+    ;;
+  "show bgp summary json")
+    echo '{"ipv4Unicast":{"routerId":"10.255.0.1","as":65000,"peers":{"10.255.0.2":{"remoteAs":65000,"state":"Established","peerUptime":"1d02h","pfxRcvd":12,"pfxSnt":12},"10.255.0.4":{"remoteAs":65000,"state":"Established","peerUptime":"04:11:22","pfxRcvd":8,"pfxSnt":9}}}}'
+    ;;
+  "show bgp ipv4 vpn summary json")
+    echo '{"routerId":"10.255.0.1","as":65000,"peers":{"10.255.0.4":{"remoteAs":65000,"state":"Established","peerUptime":"1d01h","pfxRcvd":4}}}'
+    ;;
+  "show l2vpn atom vc")
+    # DINÂMICO — lê do CONFIG_DB (redis-cfgdb DB4). Colunas:
+    # Interface  Peer ID  VC ID  Name  Status  (whitespace-separated)
+    echo 'Interface  Peer ID         VC ID    Name       Status'
+    for k in $(redis-cli -h redis-cfgdb -n 4 --scan --pattern 'L2VPN_XCONNECT_GROUP|*' 2>/dev/null); do
+      peer=$(redis-cli -h redis-cfgdb -n 4 HGET "$k" peer-address 2>/dev/null)
+      pwid=$(redis-cli -h redis-cfgdb -n 4 HGET "$k" pw-id 2>/dev/null)
+      [ -z "$pwid" ] && continue
+      name=$(echo "$k" | cut -d'|' -f2- | tr '|' '-')
+      echo "pw${pwid}      ${peer}      ${pwid}      ${name}      UP"
+    done
+    ;;
+  "show evpn vni json")
+    echo '{"100":{"vni":100,"type":"L2","vxlanInterface":"vxlan100","numMacs":6,"numArpNd":4,"numRemoteVteps":2},"200":{"vni":200,"type":"L2","vxlanInterface":"vxlan200","numMacs":3,"numArpNd":1,"numRemoteVteps":1}}'
+    ;;
+  *)
+    echo "% Unknown command: $2" >&2
+    exit 1
+    ;;
+esac

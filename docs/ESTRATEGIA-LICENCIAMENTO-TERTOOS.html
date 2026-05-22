@@ -1,0 +1,63 @@
+<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Estratégia de Licenciamento do TertoOS (for dummies)</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:980px;margin:2rem auto;padding:0 1rem;line-height:1.55;color:#1b1f23}
+h1,h2,h3{border-bottom:1px solid #eaecef;padding-bottom:.3em;margin-top:1.6em}h1{color:#0b5}
+code{background:#f6f8fa;padding:.15em .35em;border-radius:4px;font-size:.9em}
+pre{background:#0d1117;color:#e6edf3;padding:1rem;border-radius:8px;overflow:auto}pre code{background:none;color:inherit;padding:0}
+table{border-collapse:collapse;width:100%;margin:1em 0}th,td{border:1px solid #d0d7de;padding:.45em .7em;text-align:left}th{background:#f6f8fa}
+blockquote{border-left:4px solid #0b5;background:#f6fff9;margin:1em 0;padding:.5em 1em;color:#444}
+a{color:#0969da}hr{border:0;border-top:1px solid #eaecef;margin:2em 0}</style></head><body>
+<h1>Estratégia de Licenciamento do TertoOS (for dummies)</h1>
+<blockquote>Documento de referência e pitch. Explica <strong>como o TertoOS vai ganhar dinheiro</strong><br>sem cobrar pelo sistema operacional em si. Linguagem simples de propósito.<br>Decisão tomada em 2026-05-22. Estágio: <strong>estratégia fechada, nada implementado ainda.</strong></blockquote>
+<hr>
+<h2>Em uma frase</h2>
+<p>**O TertoOS (o sistema do switch) é grátis. Você cobra pela *gerência* (o Horizon) e<br>pelas *features avançadas*.** Quanto mais switches o cliente gerencia de forma<br>centralizada, mais ele paga.</p>
+<hr>
+<h2>A analogia &quot;for dummies&quot;</h2>
+<p>Pense no <strong>WhatsApp</strong>: o aplicativo é grátis pra qualquer um. Mas a versão de<br><strong>empresa</strong> (WhatsApp Business API), com central de atendimento, automações e<br>gerenciamento de muitos números, é paga.</p>
+<p>No TertoOS é igual:</p>
+<ul><li><strong>O switch funciona 100% de graça</strong> — liga, configura pela CLI, roteia tráfego. Um ISP</li></ul>
+<p>  pequeno pode rodar a rede inteira sem pagar nada.</p>
+<ul><li><strong>Quando ele quer gerenciar tudo de um lugar só</strong> (vários switches, telemetria, push de</li></ul>
+<p>  config, atualização remota) — aí entra o <strong>Horizon</strong>, que é pago.</p>
+<hr>
+<h2>O que é grátis e o que é pago</h2>
+<table><thead><tr><th>Item</th><th>O que é</th><th>Preço</th></tr></thead><tbody><tr><td><strong>TertoOS</strong> (o NOS)</td><td>A imagem do switch. CLI, L2, OSPF, BGP básico, roteamento</td><td><strong>Grátis / aberto</strong></td></tr><tr><td><strong>Horizon</strong> (gerência)</td><td>Painel central: configurar, monitorar, atualizar e detectar mudança em vários switches</td><td><strong>Pago, por switch gerenciado</strong></td></tr><tr><td><strong>Features avançadas</strong></td><td>SR-TE, L3VPN, EVPN-VXLAN, telemetria detalhada</td><td>Liberadas no plano pago</td></tr><tr><td><strong>Suporte / SLA</strong></td><td>Atendimento prioritário em português</td><td>Pacote à parte</td></tr></tbody></table>
+<blockquote>O &quot;free&quot; ainda inclui o Horizon para <strong>poucos switches</strong> (sugestão: até 3). Isso é o<br>&quot;anzol&quot;: o cliente entra no ecossistema sem pagar e, quando a rede dele cresce, vira pagante<br>naturalmente.</blockquote>
+<hr>
+<h2>Por que esse caminho é o melhor (3 razões)</h2>
+<p>1. <strong>O valor de vocês não está no protocolo — está na operação.</strong> OSPF, BGP e MPLS vêm do<br>   FRR, que é software livre. Ninguém paga por isso. O que diferencia o TertoOS é a<br>   <strong>integração testada + gerência + suporte em português + hardware nacional</strong>. Cobrar pela<br>   gerência é cobrar pelo que de fato vale.<br>2. <strong>Adoção primeiro, receita depois.</strong> NOS grátis tira a barreira de entrada — o cliente<br>   testa sem comprar nada. Quando precisa escalar, paga. Esse funil cresce sozinho.<br>3. <strong>Resolve a parte jurídica.</strong> O TertoOS usa peças com licença <strong>GPL</strong> (o FRR, partes do<br>   kernel) que obrigam a publicar o código-fonte delas. Como você <strong>não cobra pelo binário</strong>,<br>   essa obrigação vira trivial e não atrapalha o negócio. (Ver seção GPL abaixo.)</p>
+<hr>
+<h2>Como o controle funciona (a parte esperta)</h2>
+<p>Aqui está o pulo do gato: <strong>o ponto de cobrança já existe.</strong> O Horizon (chamado de &quot;Core&quot;) é<br>quem empurra a configuração, recebe a telemetria e faz a atualização dos switches. Logo:</p>
+<pre><code>Sem assinatura  →  sem gerência centralizada.
+Plano free      →  gerencia poucos switches, features básicas.
+Plano pago      →  gerencia muitos switches + libera features avançadas.</code></pre>
+<p>E mais: se o cliente não tem o plano que libera, por exemplo, <strong>L3VPN</strong>, o Core<br><strong>simplesmente não empurra</strong> essa configuração — então a feature nem liga no switch. O controle<br>acontece de graça, dentro do fluxo que já funciona. Não precisa &quot;trancar&quot; o binário.</p>
+<hr>
+<h2>As regras de ouro (inegociáveis)</h2>
+<p>1. <strong>NUNCA derrubar o tráfego do cliente.</strong> Esse é um produto de ISP/telco. Se a licença<br>   vencer, o switch <strong>continua roteando</strong>. O que acontece é: aparece um alerta, e o cliente<br>   fica impedido de fazer *mudanças* em features pagas — mas o que já está rodando, continua.<br>   Derrubar a rede de um cliente por causa de licença = processo na justiça. Jamais.<br>2. <strong>Período de tolerância (grace period) generoso</strong> — ex.: 30 a 60 dias após o vencimento,<br>   com avisos aumentando de tom.<br>3. <strong>Otimizar para o cliente honesto.</strong> 90% das pessoas só perdem o controle de licenças sem<br>   má-fé. A experiência tem que ser boa pra elas. Contra o pirata determinado não vale gastar<br>   energia — não dá pra impedir, e ele perde justamente o que tem valor (gerência, suporte,<br>   atualizações).</p>
+<hr>
+<h2>Sobre a parte jurídica (GPL) — resumo</h2>
+<blockquote>⚠️ Isto é a explicação técnica das licenças (fato consolidado). O contrato comercial em si<br>pede um advogado de propriedade intelectual.</blockquote>
+<ul><li><strong>Seu código</strong> (Horizon, agent, CLI customizada, renderers) é <strong>proprietário</strong> — você</li></ul>
+<p>  controla.</p>
+<ul><li><strong>As peças GPL</strong> (FRR, módulos do kernel) <strong>exigem</strong> que você ofereça o código-fonte delas.</li></ul>
+<p>  Solução: um portal/repositório público com esses fontes. Pronto, obrigação cumprida.</p>
+<ul><li><strong>Cobrar por produto baseado em GPL é legal e comum</strong> — Red Hat, SUSE e a antiga Cumulus</li></ul>
+<p>  fazem isso há décadas. Você vende o <strong>produto integrado + gerência + suporte</strong>, não a<br>  exclusividade sobre o pedaço GPL.</p>
+<hr>
+<h2>Quando formos cobrar (e por que dá pra esperar)</h2>
+<p>A ideia é construir <strong>toda a base de licenciamento agora</strong>, mas deixar o **pagamento como uma<br>&quot;tomada&quot; que se pluga depois**:</p>
+<ul><li><strong>Hoje:</strong> todo cliente entra no plano free. Tudo funciona. Ninguém paga.</li><li><strong>Quando decidir cobrar:</strong> conecta um meio de pagamento e define o preço. **Sem reescrever</li></ul>
+<p>  nada.**</p>
+<ul><li><strong>Meios de pagamento (Brasil):</strong> Asaas, Iugu, Vindi, Pagar.me (recorrência, PIX, boleto,</li></ul>
+<p>  nota fiscal). Internacional: Stripe.</p>
+<hr>
+<h2>Perguntas frequentes</h2>
+<p><strong>E se o cliente copiar a imagem para um switch sem licença?</strong><br>O switch funciona (é grátis mesmo). Mas ele <strong>não consegue gerenciar pelo Horizon</strong> nem ligar<br>features pagas sem assinatura. O valor está no serviço, não no arquivo.</p>
+<p><strong>Isso não é dar o produto de graça?</strong><br>Não. É dar a <strong>porta de entrada</strong> de graça. O dinheiro vem de quem cresce e precisa de escala,<br>gerência e suporte — exatamente quem tem capacidade de pagar.</p>
+<p><strong>Por que não cobrar por velocidade de porta (1G/10G/100G)?</strong><br>Mais complexo de medir e justificar agora. Começamos <strong>simples</strong>: um preço por switch<br>gerenciado, tudo incluso. Modelos mais sofisticados entram depois, se o mercado pedir.</p>
+<p><strong>Como é a contagem de switches?</strong><br>O Horizon já sabe quantos switches cada cliente tem cadastrado (tabela <code>switches</code>). O plano<br>define o limite. Acima do limite: bloqueia novo cadastro (de forma suave) ou pede upgrade.</p>
+<hr>
+<h2>Glossário</h2>
+<ul><li><strong>NOS</strong> — Network Operating System (o sistema do switch). No nosso caso, o TertoOS.</li><li><strong>Horizon / Core</strong> — a plataforma central (SaaS) que gerencia os switches.</li><li><strong>Tenant</strong> — um cliente/organização isolada dentro do Horizon (cada ISP é um tenant).</li><li><strong>Open-core</strong> — modelo onde o núcleo é aberto/grátis e os extras/gerência são pagos.</li><li><strong>Entitlement</strong> — o &quot;direito de uso&quot;: o que aquele cliente/switch pode fazer.</li><li><strong>Grace period</strong> — período de tolerância após o vencimento, sem cortar o serviço.</li><li><strong>GPL</strong> — licença de software livre que obriga a compartilhar o código-fonte.</li></ul>
+</body></html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Laboratório TertoOS — Guia &quot;for dummies&quot;</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:980px;margin:2rem auto;padding:0 1rem;line-height:1.55;color:#1b1f23}
+h1,h2,h3{border-bottom:1px solid #eaecef;padding-bottom:.3em;margin-top:1.6em}h1{color:#0b5}
+code{background:#f6f8fa;padding:.15em .35em;border-radius:4px;font-size:.9em}
+pre{background:#0d1117;color:#e6edf3;padding:1rem;border-radius:8px;overflow:auto}pre code{background:none;color:inherit;padding:0}
+table{border-collapse:collapse;width:100%;margin:1em 0}th,td{border:1px solid #d0d7de;padding:.45em .7em;text-align:left}th{background:#f6f8fa}
+blockquote{border-left:4px solid #0b5;background:#f6fff9;margin:1em 0;padding:.5em 1em;color:#444}
+a{color:#0969da}hr{border:0;border-top:1px solid #eaecef;margin:2em 0}</style></head><body>
+<h1>Laboratório TertoOS — Guia &quot;for dummies&quot;</h1>
+<blockquote><strong>O que é isto:</strong> um passo a passo, em nível de iniciante, para subir e operar o<br>laboratório do TertoOS — o nosso NOS (Network Operating System) baseado em SONiC,<br>posicionado como <strong>roteador de agregação / PE</strong> para provedores.<br><br><strong>Estágio (honesto):</strong> tudo aqui é <strong>laboratório / simulador</strong>. Não é produção. O<br>encaminhamento do &quot;fio L2&quot; (L2 Circuit) em produção é nativo do silício (Centec); no<br>laboratório usamos um *simulacro* de software (explicado no §8).</blockquote>
+<hr>
+<h2>1. O que o laboratório prova</h2>
+<p>Com 4 roteadores TertoOS (PE = Provider Edge) o lab demonstra, **tudo configurado pela<br>CLI estilo IOS-XR (klish)**:</p>
+<table><thead><tr><th>Recurso</th><th>O que é (em uma frase)</th></tr></thead><tbody><tr><td><strong>SR-MPLS</strong></td><td>MPLS com Segment Routing — cada roteador tem um &quot;número&quot; (node-SID) e o caminho é uma pilha de labels.</td></tr><tr><td><strong>BGP</strong></td><td>O protocolo que troca rotas entre roteadores.</td></tr><tr><td><strong>BGP Route Reflector (RR)</strong></td><td>Um roteador central que &quot;reflete&quot; rotas, evitando que todos falem com todos.</td></tr><tr><td><strong>BGP communities</strong></td><td>&quot;Etiquetas&quot; nas rotas para aplicar políticas (ex.: não exportar, mudar preferência).</td></tr><tr><td><strong>L2 Circuit / fio L2 (VPWS)</strong></td><td>Um &quot;cabo virtual&quot; que leva Ethernet do cliente de um PE a outro por cima do MPLS.</td></tr></tbody></table>
+<hr>
+<h2>2. Topologia</h2>
+<pre><code>                 (cliente PPPoE)                         (BRAS PPPoE)
+                      CPE                                    BRAS
+                       │ br-cpe                       br-bras │
+                       │                                      │
+                  ┌────┴────┐    10.0.12.0/30    ┌────────────┴┐
+                  │   PE1   │────────────────────│     PE2     │
+                  │ .255.0.1│  Eth4         Eth0 │  .255.0.2   │
+                  └────┬────┘                    └──────┬──────┘
+              10.0.13.0/30 Eth8              Eth4 10.0.24.0/30
+                       │                                │
+                  ┌────┴────┐                    ┌──────┴──────┐
+                  │   PE3   │────────────────────│     PE4     │
+                  │ .255.0.3│  Eth4   10.0.34.0/30  .255.0.4   │
+                  └─────────┘  Eth0          Eth8 └─────────────┘</code></pre>
+<p><strong>Nós:</strong></p>
+<table><thead><tr><th>Nó</th><th>Imagem</th><th>Loopback (router-id)</th><th>node-SID</th></tr></thead><tbody><tr><td>PE1</td><td>TertoOS (sonic-vs)</td><td>10.255.0.1</td><td>16001</td></tr><tr><td>PE2</td><td>TertoOS (sonic-vs)</td><td>10.255.0.2</td><td>16002</td></tr><tr><td>PE3</td><td>TertoOS (sonic-vs)</td><td>10.255.0.3</td><td>16003</td></tr><tr><td>PE4</td><td>TertoOS (sonic-vs)</td><td>10.255.0.4</td><td>16004</td></tr><tr><td>CPE</td><td>MikroTik CHR</td><td>—</td><td>cliente PPPoE (atrás do PE1)</td></tr><tr><td>BRAS</td><td>MikroTik CHR</td><td>—</td><td>servidor PPPoE (atrás do PE4)</td></tr></tbody></table>
+<p><strong>Links (de núcleo) e portas SONiC:</strong></p>
+<table><thead><tr><th>Link</th><th>Sub-rede</th><th>Ponta A</th><th>Ponta B</th></tr></thead><tbody><tr><td>PE1 ↔ PE2</td><td>10.0.12.0/30</td><td>PE1 Ethernet4 (.1)</td><td>PE2 Ethernet0 (.2)</td></tr><tr><td>PE1 ↔ PE3</td><td>10.0.13.0/30</td><td>PE1 Ethernet8 (.1)</td><td>PE3 Ethernet0 (.2)</td></tr><tr><td>PE2 ↔ PE4</td><td>10.0.24.0/30</td><td>PE2 Ethernet4 (.1)</td><td>PE4 Ethernet4 (.2)</td></tr><tr><td>PE3 ↔ PE4</td><td>10.0.34.0/30</td><td>PE3 Ethernet4 (.1)</td><td>PE4 Ethernet8 (.2)</td></tr><tr><td>PE1 ↔ CPE</td><td>acesso</td><td>PE1 Ethernet0 (br-cpe)</td><td>CPE ether2</td></tr><tr><td>PE4 ↔ BRAS</td><td>acesso</td><td>PE4 Ethernet0 (br-bras)</td><td>BRAS ether2</td></tr></tbody></table>
+<blockquote><strong>Importante (PE1↔PE4 não são vizinhos diretos):</strong> o caminho PE1→PE4 passa por PE2 *ou*<br>PE3 (ECMP). É por isso que o &quot;fio L2&quot; entre eles é <strong>multi-hop</strong> (§8).</blockquote>
+<p><strong>Credenciais padrão:</strong> usuário <code>admin</code>, senha <code>tos</code>. Hostname <code>tertoos</code>.</p>
+<hr>
+<h2>3. Onde o lab roda</h2>
+<ul><li><strong>Servidor de build/sim:</strong> <code>build@192.168.0.123</code> (Linux, KVM/QEMU).</li><li><strong>Repositório:</strong> <code>/dados/tertoos</code> (no servidor) — branch da release <code>v0.5.0</code>.</li><li><strong>Scripts do sim:</strong> <code>src/terto-horizon/sim/canonical-mpls/</code>.</li><li><strong>Acesso aos PEs:</strong> SSH via porta local no servidor — PE1=2201, PE2=2202, PE3=2203,</li></ul>
+<p>  PE4=2204, CPE=2210, BRAS=2211. Exemplo de PE1:<br>  ```bash<br>  ssh build@192.168.0.123<br>  sshpass -p tos ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \<br>      -p 2201 admin@127.0.0.1<br>  ```<br>  &gt; Após um boot novo, as chaves SSH dos PEs mudam — por isso o <code>UserKnownHostsFile=/dev/null</code>.</p>
+<hr>
+<h2>4. Subir o laboratório (o jeito fácil)</h2>
+<p>No servidor, dentro de <code>src/terto-horizon/sim/canonical-mpls</code>:</p>
+<pre><code>cd /dados/tertoos/src/terto-horizon/sim/canonical-mpls
+
+make up          # cria as bridges + sobe as 6 VMs (PE1-4 + CPE + BRAS)
+# aguarde ~8-10 min o SONiC bootar e os containers subirem
+
+make status      # mostra VMs, bridges e links</code></pre>
+<p><strong>Smoke completo de SR-MPLS pela CLI (recomendado p/ validar):</strong></p>
+<pre><code>TERTOOS_ADMIN_PASS=tos make smoke-sr-klish
+# bootstrap (limpa minigraph + habilita FRR) -&gt; configura SR via klish -&gt; roda a suíte
+# resultado esperado: PASS 20  FAIL 0</code></pre>
+<p>Outros alvos úteis:</p>
+<pre><code>make bootstrap   # só prepara os PEs (limpa config de exemplo + habilita daemons FRR)
+make sr-klish    # só configura SR-MPLS via klish (sem a suíte)
+make down        # derruba as VMs e remove as bridges
+make help        # lista todos os alvos</code></pre>
+<hr>
+<h2>5. Configurar pela CLI (klish, estilo IOS-XR) — passo a passo</h2>
+<p>Entre num PE (ex.: PE1) e na CLI:</p>
+<pre><code>sshpass -p tos ssh ... -p 2201 admin@127.0.0.1     # cai direto na CLI &quot;tertoos&gt;&quot;
+enable
+configure terminal</code></pre>
+<h3>5.1 SR-MPLS (resumo — o <code>make sr-klish</code> já faz isto)</h3>
+<p>Cada PE habilita OSPF com Segment Routing e um prefix-SID no Loopback0. (Automatizado<br>pelos scripts; aqui fica o conceito: OSPF na interface + <code>segment-routing</code> global + SRGB<br>16000–23999 + prefix-SID por loopback.)</p>
+<h3>5.2 BGP + Route Reflector</h3>
+<p><strong>No PE1 (o Route Reflector):</strong></p>
+<pre><code>router bgp 65000
+ bgp router-id 10.255.0.1
+ address-family ipv4 unicast
+  network 10.255.0.1/32
+  exit
+ neighbor 10.255.0.2
+  remote-as 65000
+  update-source Loopback0
+  address-family ipv4 unicast
+   route-reflector-client
+   exit
+  exit
+ neighbor 10.255.0.3
+  remote-as 65000
+  update-source Loopback0
+  address-family ipv4 unicast
+   route-reflector-client
+   exit
+  exit
+ neighbor 10.255.0.4
+  remote-as 65000
+  update-source Loopback0
+  address-family ipv4 unicast
+   route-reflector-client
+   exit
+  exit
+ exit
+exit
+commit
+end</code></pre>
+<p><strong>Nos clientes (PE2, PE3, PE4) — exemplo PE2:</strong></p>
+<pre><code>configure terminal
+router bgp 65000
+ bgp router-id 10.255.0.2
+ address-family ipv4 unicast
+  network 10.255.0.2/32
+  exit
+ neighbor 10.255.0.1
+  remote-as 65000
+  update-source Loopback0
+  address-family ipv4 unicast
+   exit
+  exit
+ exit
+exit
+commit
+end</code></pre>
+<p><strong>Verificar (no FRR, dentro do container bgp):</strong></p>
+<pre><code>docker exec bgp vtysh -c &quot;show bgp ipv4 unicast summary&quot;   # sessões Established</code></pre>
+<h3>5.3 BGP communities (set + match + política)</h3>
+<p><strong>No PE2 — etiquetar as rotas anunciadas com a community 65000:100:</strong></p>
+<pre><code>configure terminal
+route-policy SET-COMM
+ permit 10
+ set community 10 65000:100
+ exit
+router bgp 65000
+ neighbor 10.255.0.1
+  address-family ipv4 unicast
+   send-community standard
+   route-policy out SET-COMM
+   exit
+  exit
+ exit
+exit
+commit
+end</code></pre>
+<p><strong>No PE1 (RR) — casar a community e mudar a preferência:</strong></p>
+<pre><code>configure terminal
+community-set CS-P2
+ member 65000:100
+ exit
+route-policy CHK-COMM
+ permit 10
+ match community 10 CS-P2
+ set local-preference 10 300
+ permit 20
+ exit
+router bgp 65000
+ neighbor 10.255.0.2
+  address-family ipv4 unicast
+   route-policy in CHK-COMM
+   exit
+  exit
+ exit
+exit
+commit
+end</code></pre>
+<p><strong>Verificar (no PE1 ou PE3):</strong></p>
+<pre><code>docker exec bgp vtysh -c &quot;show bgp ipv4 unicast 172.16.2.0/24&quot;
+# deve mostrar: Community: 65000:100, localpref 300, Originator/Cluster list (refletido)</code></pre>
+<hr>
+<h2>6. Smoke test: forçar um caminho no SR (SR-TE)</h2>
+<p>Mostra que dá para <strong>pinar um fluxo num caminho específico</strong> (em vez do ECMP). Forçamos o<br>mesmo destino (10.99.99.4 no PE4) primeiro via PE2, depois via PE3.</p>
+<pre><code># no PE4: cria um destino de teste
+ip addr add 10.99.99.4/32 dev lo
+
+# no PE1: força via PE2 (label do PE4 = 16004, next-hop = PE2)
+ip route replace 10.99.99.4/32 encap mpls 16004 via 10.0.12.2 dev Ethernet4
+ping -c 5 -I 10.255.0.1 10.99.99.4
+
+# no PE1: força via PE3
+ip route replace 10.99.99.4/32 encap mpls 16004 via 10.0.13.2 dev Ethernet8
+ping -c 5 -I 10.255.0.1 10.99.99.4
+
+# verificar no PE4 (qual interface recebe): Ethernet4=de PE2, Ethernet8=de PE3
+tcpdump -nni Ethernet4 host 10.99.99.4   # vê tráfego quando forçado via PE2
+tcpdump -nni Ethernet8 host 10.99.99.4   # vê tráfego quando forçado via PE3</code></pre>
+<blockquote><strong>Detalhe:</strong> o penúltimo salto remove o label (PHP), então no PE4 o pacote chega como IP<br>puro — por isso filtramos por <code>host</code>, não por <code>mpls</code>. Resultado provado: 100% do fluxo<br>migra para o caminho forçado.</blockquote>
+<hr>
+<h2>7. Cenário canônico: PPPoE pelo fio L2 (OLT/ONU → BRAS)</h2>
+<p>O CPE (atrás do PE1) disca PPPoE; a BRAS (atrás do PE4) termina. O &quot;fio L2&quot; leva o PPPoE<br>de PE1 a PE4 por cima do MPLS. Os CHR (MikroTik) já trazem PPPoE; os scripts configuram:</p>
+<pre><code>make build-chr      # baixa a imagem CHR (uma vez)
+# após &#x27;make up&#x27;, rodar a config dos CHR (PPPoE no access port = ether2):
+scripts/cpe-chr-up.sh  topology.yml /tmp/tertoos-sim
+scripts/bras-chr-up.sh topology.yml /tmp/tertoos-sim</code></pre>
+<p><strong>Resultado provado:</strong> o CPE recebe um IP da pool da BRAS e o ping CPE→BRAS passa 0% loss,<br>atravessando o fio L2.</p>
+<hr>
+<h2>8. O &quot;fio L2&quot; no simulador (simulacro de data plane) — §avançado</h2>
+<p>No hardware real (Centec) o pseudowire (fio L2) é nativo do silício. No SONiC-VS o objeto<br>de pseudowire <strong>não tem data plane</strong>, então usamos um *sidecar* de software (<code>tos-vpws-sim</code>,<br>em <code>vpws-sidecar/</code>) que lê o <code>CONFIG_DB</code> e encaminha o quadro Ethernet do cliente por cima<br>do MPLS. <strong>É VS-only</strong> — não entra na build de silício.</p>
+<p>Configuração mínima de um PW (escrita no CONFIG_DB; o klish escreve a mesma tabela):</p>
+<pre><code># em cada PE, com o sidecar rodando:
+redis-cli -n 4 hset &#x27;L2VPN_XCONNECT_GROUP|G1|P1&#x27; \
+    interface &lt;porta-acesso&gt; peer-address &lt;loopback-do-PE-remoto&gt; pw-id 100
+sudo /tmp/tos-vpws-sim &amp;     # observa o CONFIG_DB e realiza o(s) PW(s)</code></pre>
+<p>Detalhes e fases (0 a 3) em <code>src/terto-horizon/sim/canonical-mpls/vpws-sidecar/README.md</code>.</p>
+<hr>
+<h2>9. Resolução de problemas (rápido)</h2>
+<table><thead><tr><th>Sintoma</th><th>Causa provável</th><th>O quê fazer</th></tr></thead><tbody><tr><td>SSH &quot;REMOTE HOST IDENTIFICATION CHANGED&quot;</td><td>boot novo regenerou as chaves</td><td>use <code>-o UserKnownHostsFile=/dev/null</code> ou limpe o <code>known_hosts</code></td></tr><tr><td><code>make bootstrap</code> falha pedindo senha</td><td>senha do sim diferente do default</td><td><code>TERTOOS_ADMIN_PASS=tos make ...</code></td></tr><tr><td>Sessão BGP fica <code>Idle</code>/<code>Active</code></td><td>neighbor não ativado / NHT não resolveu</td><td>confira <code>address-family ipv4 unicast</code> no neighbor; aguarde OSPF convergir</td></tr><tr><td>Config some ao reconfigurar via klish</td><td>sonic-vs perde eventos do frrcfgd</td><td><code>docker exec bgp supervisorctl restart frrcfgd</code> (re-renderiza limpo)</td></tr><tr><td><code>network 10.0.0.0/24</code> vira /32</td><td>(corrigido na v0.5.0)</td><td>use a imagem v0.5.0</td></tr></tbody></table>
+<hr>
+<h2>10. Versão</h2>
+<p>Release <strong>TertoOS v0.5.0 (labs)</strong> — primeira release de laboratório com o plano de gerência<br>(klish) dirigindo SR-MPLS, BGP/RR, communities e o simulacro do fio L2.<br>GitHub: https://github.com/terto-networks/tertoos/releases/tag/v0.5.0</p>
+</body></html>

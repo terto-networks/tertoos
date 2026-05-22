@@ -1,0 +1,66 @@
+<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EVE-NG — instalar e montar o lab TertoOS (for dummies)</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:980px;margin:2rem auto;padding:0 1rem;line-height:1.55;color:#1b1f23}
+h1,h2,h3{border-bottom:1px solid #eaecef;padding-bottom:.3em;margin-top:1.6em}h1{color:#0b5}
+code{background:#f6f8fa;padding:.15em .35em;border-radius:4px;font-size:.9em}
+pre{background:#0d1117;color:#e6edf3;padding:1rem;border-radius:8px;overflow:auto}pre code{background:none;color:inherit;padding:0}
+table{border-collapse:collapse;width:100%;margin:1em 0}th,td{border:1px solid #d0d7de;padding:.45em .7em;text-align:left}th{background:#f6f8fa}
+blockquote{border-left:4px solid #0b5;background:#f6fff9;margin:1em 0;padding:.5em 1em;color:#444}
+a{color:#0969da}hr{border:0;border-top:1px solid #eaecef;margin:2em 0}</style></head><body>
+<h1>EVE-NG — instalar e montar o lab TertoOS (for dummies)</h1>
+<blockquote>Guia passo a passo para colocar a imagem <strong>TertoOS v0.5.0</strong> no EVE-NG e montar a<br>topologia canônica (4 PE + CPE + BRAS). Estágio: <strong>laboratório</strong> (não produção).</blockquote>
+<p>Arquivos deste pacote:</p>
+<ul><li><code>eve-ng/tertoos.yml</code> — template do nó QEMU TertoOS.</li><li><code>tertoos-v0.5.0.qcow2</code> — a imagem (convertida do <code>sonic-vs.img.gz</code> da release).</li></ul>
+<hr>
+<h2>1. Pré-requisitos</h2>
+<ul><li>Um servidor <strong>EVE-NG</strong> (Community ou Pro) com KVM habilitado.</li><li>Acesso <code>root</code> por SSH ao EVE-NG.</li><li>A imagem <code>tertoos-v0.5.0.qcow2</code> (vamos copiar — ver §5 do guia do lab / abaixo).</li></ul>
+<hr>
+<h2>2. Instalar a imagem TertoOS no EVE-NG</h2>
+<p>No servidor EVE-NG, como <strong>root</strong>:</p>
+<pre><code># 1) criar o diretório da imagem (o prefixo &quot;tertoos-&quot; casa com o template)
+mkdir -p /opt/unetlab/addons/qemu/tertoos-v0.5.0
+
+# 2) copiar a imagem para lá com o nome que o EVE-NG espera (disco virtio)
+#    (o arquivo chega via scp da máquina local — ver §4)
+cp /root/tertoos-v0.5.0.qcow2 /opt/unetlab/addons/qemu/tertoos-v0.5.0/virtioa.qcow2
+
+# 3) instalar o template
+cp tertoos.yml /opt/unetlab/html/templates/tertoos.yml
+
+# 4) ajustar permissões (passo OBRIGATÓRIO no EVE-NG)
+/opt/unetlab/wrappers/unl_wrapper -a fixpermissions</code></pre>
+<h3>2a. Registrar o template no menu (EVE-NG CE)</h3>
+<p>Em algumas versões o template novo já aparece. Se NÃO aparecer no menu de nós, edite<br><code>/opt/unetlab/html/includes/init.php</code> e adicione a linha no array <code>$node_templates</code><br>(em ordem alfabética):</p>
+<pre><code>&#x27;tertoos&#x27;         =&gt;  &#x27;TertoOS&#x27;,</code></pre>
+<p>Salve e recarregue a página do EVE-NG (Ctrl+F5).</p>
+<h3>2b. Alternativa sem template custom (mais simples)</h3>
+<p>Se preferir não mexer no <code>init.php</code>, use o template embutido <strong>Linux</strong>:</p>
+<pre><code>mkdir -p /opt/unetlab/addons/qemu/linux-tertoos-v0.5.0
+cp tertoos-v0.5.0.qcow2 /opt/unetlab/addons/qemu/linux-tertoos-v0.5.0/virtioa.qcow2
+/opt/unetlab/wrappers/unl_wrapper -a fixpermissions</code></pre>
+<p>No lab, adicione um nó <strong>Linux</strong>, escolha a imagem <code>tertoos-v0.5.0</code>, defina <strong>8 interfaces</strong>,<br><strong>4096 MB RAM</strong>, <strong>2 vCPU</strong>, console <strong>telnet</strong>.</p>
+<hr>
+<h2>3. Montar a topologia no EVE-NG (GUI)</h2>
+<p>Crie um lab novo e adicione <strong>4 nós TertoOS</strong> (PE1–PE4). Se quiser o cenário PPPoE<br>completo, adicione também 2 nós <strong>MikroTik CHR</strong> (CPE e BRAS).</p>
+<p><strong>Por nó TertoOS:</strong> 8 interfaces, 4 GB RAM, 2 vCPU.</p>
+<p><strong>Conexões (mapa de cabos):</strong></p>
+<table><thead><tr><th>De (nó/porta)</th><th>Para (nó/porta)</th><th>Papel</th></tr></thead><tbody><tr><td>PE1 eth1</td><td>PE2 eth0</td><td>núcleo PE1↔PE2</td></tr><tr><td>PE1 eth2</td><td>PE3 eth0</td><td>núcleo PE1↔PE3</td></tr><tr><td>PE2 eth1</td><td>PE4 eth0</td><td>núcleo PE2↔PE4</td></tr><tr><td>PE3 eth1</td><td>PE4 eth1</td><td>núcleo PE3↔PE4</td></tr><tr><td>PE1 eth0</td><td>CPE eth1</td><td>acesso (PPPoE cliente)</td></tr><tr><td>PE4 eth0</td><td>BRAS eth1</td><td>acesso (PPPoE BRAS)</td></tr></tbody></table>
+<blockquote>No EVE-NG, <code>eth0</code> do nó = <strong>Ethernet0</strong> do SONiC, <code>eth1</code> = <strong>Ethernet4</strong>, <code>eth2</code> =<br><strong>Ethernet8</strong> (o SONiC numera as front-panel de 4 em 4). O mapa de IPs/sub-redes é o<br>mesmo do guia do lab (<code>LAB-TERTOOS-FOR-DUMMIES.md</code>, §2).</blockquote>
+<p>Inicie todos os nós, abra o console (telnet) e logue com <strong>admin / tos</strong>.</p>
+<hr>
+<h2>4. Copiar a imagem para o EVE-NG (resumo)</h2>
+<p>Fluxo: <strong>servidor de build → máquina local → servidor EVE-NG</strong> (a máquina local serve de<br>ponte). Comandos detalhados no guia do lab e no processo que executamos:</p>
+<pre><code># 1) build -&gt; local (na máquina local)
+scp build@192.168.0.123:/tmp/tertoos-v0.5.0.qcow2  C:\dev\tertoos\eve-ng\
+
+# 2) local -&gt; EVE-NG (na máquina local; troque &lt;IP-EVE-NG&gt;)
+scp C:\dev\tertoos\eve-ng\tertoos-v0.5.0.qcow2  root@&lt;IP-EVE-NG&gt;:/root/</code></pre>
+<hr>
+<h2>5. Configurar (depois de subir)</h2>
+<p>A partir do console de cada PE, siga o <strong>guia do lab</strong> (<code>LAB-TERTOOS-FOR-DUMMIES.md</code>):</p>
+<ul><li>§5.2 BGP + Route Reflector</li><li>§5.3 BGP communities</li><li>§6 forçar caminho SR (SR-TE)</li><li>§7 PPPoE pelo fio L2</li></ul>
+<blockquote>No EVE-NG não há os alvos <code>make</code> do nosso sim (aqueles dependem do nosso servidor). No<br>EVE-NG a configuração é feita <strong>manualmente pela CLI</strong> (klish) de cada nó, ou colando os<br>blocos de comando do guia do lab.</blockquote>
+<hr>
+<h2>6. Dicas / problemas comuns</h2>
+<ul><li><strong>Nó não dá boot:</strong> confirme KVM (<code>kvm-ok</code>), RAM suficiente no EVE-NG e o nome do arquivo</li></ul>
+<p>  <code>virtioa.qcow2</code> (não <code>hda.qcow2</code>) — o template usa disco <strong>virtio</strong>.</p>
+<ul><li><strong>Sem console:</strong> o template usa serial→telnet; aguarde ~2–3 min o boot do SONiC.</li><li><strong>Login:</strong> <code>admin</code> / <code>tos</code>. Para <code>configure</code>, primeiro <code>enable</code>.</li><li><strong>Permissões:</strong> sempre rode <code>unl_wrapper -a fixpermissions</code> após copiar imagens/templates.</li></ul>
+</body></html>

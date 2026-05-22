@@ -1,0 +1,136 @@
+<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Design — Subscription / Entitlement (no papel)</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:980px;margin:2rem auto;padding:0 1rem;line-height:1.55;color:#1b1f23}
+h1,h2,h3{border-bottom:1px solid #eaecef;padding-bottom:.3em;margin-top:1.6em}h1{color:#0b5}
+code{background:#f6f8fa;padding:.15em .35em;border-radius:4px;font-size:.9em}
+pre{background:#0d1117;color:#e6edf3;padding:1rem;border-radius:8px;overflow:auto}pre code{background:none;color:inherit;padding:0}
+table{border-collapse:collapse;width:100%;margin:1em 0}th,td{border:1px solid #d0d7de;padding:.45em .7em;text-align:left}th{background:#f6f8fa}
+blockquote{border-left:4px solid #0b5;background:#f6fff9;margin:1em 0;padding:.5em 1em;color:#444}
+a{color:#0969da}hr{border:0;border-top:1px solid #eaecef;margin:2em 0}</style></head><body>
+<h1>Design — Subscription / Entitlement (no papel)</h1>
+<blockquote>Desenho técnico da camada de licenciamento do TertoOS Horizon. **Não é<br>implementação** — é o blueprint pra discutir antes de codar. Baseado na estratégia<br>open-core (ver <code>ESTRATEGIA-LICENCIAMENTO-TERTOOS.md</code>). Reaproveita a infra existente:<br>Core multi-tenant, PKI (CA + mTLS + CRL), phone-home NATS, serial por switch, OTA.</blockquote>
+<hr>
+<h2>1. Princípios de design</h2>
+<p>1. <strong>Enforcement no Core, não no device.</strong> O Core já controla push de config, telemetria e<br>   OTA. Sem assinatura → sem gerência; sem feature no plano → Core não empurra a config. A<br>   validação no agent (token assinado) é <strong>defesa em profundidade / modo offline</strong>, não<br>   requisito da v1.<br>2. <strong>Soft enforcement — nunca brica.</strong> Estados de assinatura degradam suavemente; tráfego<br>   existente nunca cai.<br>3. <strong>Reuso da PKI.</strong> O license token é assinado pela <strong>mesma CA</strong> que assina os certs mTLS —<br>   é o mesmo padrão do <code>cert.revoked</code> (S13.B.5) e do CRL pull (S13.B.4).<br>4. <strong>Billing plugável.</strong> Pagamento é uma porta (<code>IBillingGateway</code>); na v1 a implementação é<br>   <code>NullBilling</code> (tudo free).<br>5. <strong>Simples primeiro.</strong> Um preço por device gerenciado, tudo incluso. Sem tiers complexos.</p>
+<hr>
+<h2>2. Modelo de dados</h2>
+<h3>2.1 Entidades (no Core / Postgres)</h3>
+<pre><code>Plan (catálogo — poucas linhas fixas)
+ ├─ Code            string  PK   (&quot;free&quot;, &quot;managed&quot;)
+ ├─ Name            string       (&quot;Free&quot;, &quot;Gerenciado&quot;)
+ ├─ DeviceLimit     int          (free=3; managed=null/ilimitado)
+ ├─ Features        string[]     (features liberadas; ver §3)
+ ├─ PricePerDevice  decimal?     (free=0; managed=preço — pode ficar null por ora)
+ └─ IsDefault       bool         (free=true → novo tenant cai aqui)
+
+Subscription (1 por tenant)            [MultiTenant]
+ ├─ Id              Guid    PK
+ ├─ TenantId        string  FK→tenant  (unique: 1 ativa por tenant)
+ ├─ PlanCode        string  FK→Plan
+ ├─ Status          enum         (active | grace | suspended)
+ ├─ DeviceLimit     int          (cópia do plano no momento; permite override comercial)
+ ├─ Features        string[]     (cópia/override do plano)
+ ├─ CurrentPeriodEnd DateTimeOffset?  (null = free permanente)
+ ├─ GraceUntil      DateTimeOffset?
+ ├─ ExternalRef     string?      (id da assinatura no gateway de pagamento — futuro)
+ ├─ CreatedAt / UpdatedAt
+ └─ (derivado) ManagedDeviceCount = COUNT(switches WHERE TenantId=...)
+
+LicenseToken (opcional v1 — p/ device-side / offline)
+ ├─ assinado pela CA: JWT { tenant, serial, features[], plan, nbf, exp }
+ ├─ não precisa persistir; é gerado on-demand e entregue ao agent
+ └─ agent valida com a public key da CA (já embarcada)</code></pre>
+<h3>2.2 Diagrama de relacionamento</h3>
+<pre><code>        ┌──────────┐        ┌────────────────┐        ┌─────────────┐
+        │  Plan    │ 1    * │  Subscription  │ 1    1 │   Tenant    │
+        │ (free,   ├───────►│  (status,      ├───────►│  (acme,...) │
+        │ managed) │        │   limit, feat) │        └──────┬──────┘
+        └──────────┘        └────────────────┘               │ 1
+                                                              │
+                                                              │ *
+                                                       ┌──────▼──────┐
+                                                       │  Switch     │  (já existe)
+                                                       │  (serial)   │
+                                                       └─────────────┘
+   Entitlement de um switch = (Subscription.Status ∈ {active,grace})
+                              AND (ManagedDeviceCount ≤ DeviceLimit)
+                              AND (feature ∈ Subscription.Features)</code></pre>
+<blockquote>Nota: <strong>Entitlement não vira tabela na v1</strong> — é uma *função* sobre a Subscription + contagem<br>de switches. Vira tabela só se/quando precisar de license token por device persistido.</blockquote>
+<hr>
+<h2>3. Catálogo de features (o que é &quot;premium&quot;)</h2>
+<pre><code>free      : l2, ospf, bgp-basic, cli-local, horizon-manage(≤ DeviceLimit)
+premium   : sr-mpls, sr-te, l3vpn, evpn-vxlan, telemetry-advanced, ota, multi-site</code></pre>
+<p>Cada operação de config no Core declara qual feature exige. Ex.: aplicar uma config de L3VPN<br>→ requer <code>l3vpn</code> ∈ <code>Subscription.Features</code>.</p>
+<hr>
+<h2>4. Máquina de estados da Subscription</h2>
+<pre><code>                 período vence
+   ┌────────┐  (CurrentPeriodEnd)   ┌────────┐   GraceUntil vence   ┌───────────┐
+   │ active │ ───────────────────►  │ grace  │ ───────────────────► │ suspended │
+   └────────┘                       └────────┘                      └───────────┘
+       ▲                                 │                                │
+       │       pagamento / renovação     │      pagamento / upgrade       │
+       └─────────────────────────────────┴────────────────────────────────┘
+
+  active    : tudo liberado dentro do plano.
+  grace     : tudo ainda funciona + ALERTA. (janela de cortesia, ex. 30-60 dias)
+  suspended : bloqueia MUDANÇA de config premium e NOVOS enrollments.
+              NUNCA derruba tráfego nem remove config que já está rodando.</code></pre>
+<hr>
+<h2>5. Fluxos principais</h2>
+<h3>5.1 Criação de tenant → subscription free automática</h3>
+<pre><code>Admin cria tenant &quot;acme&quot;
+   └─► Core cria Subscription{ tenant=acme, plan=free, status=active,
+                               deviceLimit=3, features=[base], periodEnd=null }</code></pre>
+<h3>5.2 Enrollment de switch (gate de contagem)</h3>
+<pre><code>Switch novo tenta enrollar (já passa pela PKI/mTLS existente)
+   └─► Core: ManagedDeviceCount &lt; DeviceLimit ?
+         ├─ sim  → enroll OK
+         └─ não  → SOFT: enroll permitido porém marcado &quot;over-limit&quot; + alerta no painel
+                   (ou bloqueio, conforme política — recomendo soft no início)</code></pre>
+<h3>5.3 Push de config (gate de feature) — o enforcement principal</h3>
+<pre><code>Operador aplica config (ApplyConfig no Core)
+   └─► Core resolve as features exigidas pela config
+         └─► todas ∈ Subscription.Features  AND  status ∈ {active, grace} ?
+               ├─ sim  → renderiza + empurra (fluxo atual, intacto)
+               └─ não  → REJEITA com erro claro:
+                         &quot;Feature &#x27;l3vpn&#x27; requer plano Gerenciado. Faça upgrade.&quot;
+                         (config existente no switch NÃO é tocada)</code></pre>
+<h3>5.4 License token (defesa em profundidade / offline) — opcional v1</h3>
+<pre><code>Core (on-demand)                          Agent no switch
+  assina JWT com a CA  ──push NATS──►   recebe (subject .license.updated,
+  { tenant, serial,     ──ou pull──►     espelha cert.revoked / CRL)
+    features, exp }                       │
+                                          ├─ valida assinatura (CA pubkey embarcada)
+                                          ├─ confere serial == próprio
+                                          ├─ reporta status no heartbeat
+                                          └─ (futuro) gate local de feature, soft</code></pre>
+<h3>5.5 Billing (futuro) — webhook ajusta a subscription</h3>
+<pre><code>Gateway (Asaas/Stripe) ──webhook──► IBillingGateway.HandleWebhook(evt)
+   evt = pagamento ok       → Subscription.status=active, periodEnd=+1 mês
+   evt = falha/cancel       → status=grace (inicia GraceUntil)</code></pre>
+<hr>
+<h2>6. Onde isso encaixa no código existente (reuso)</h2>
+<table><thead><tr><th>Peça nova</th><th>Onde pluga</th><th>Reaproveita</th></tr></thead><tbody><tr><td><code>Plan</code>, <code>Subscription</code> (EF)</td><td><code>Core.Infrastructure/Persistence</code></td><td>padrão das entities <code>[MultiTenant]</code></td></tr><tr><td>Gate de contagem</td><td>handler de enrollment</td><td>tabela <code>switches</code> já conta</td></tr><tr><td>Gate de feature</td><td><code>ApplyConfigHandler</code></td><td>ponto único de push já existe</td></tr><tr><td>License token</td><td>novo <code>LicenseSigner</code></td><td>CA + padrão <code>cert.revoked</code> (S13.B.5)</td></tr><tr><td>Push/pull do token</td><td>NATS subjects</td><td>espelha CRL pull (S13.B.4)</td></tr><tr><td><code>IBillingGateway</code> (porta)</td><td><code>Core.Application</code></td><td><code>NullBilling</code> agora; gateway depois</td></tr><tr><td>UI &quot;Planos / Licenças&quot;</td><td>nova page na admin UI</td><td>estende o painel AmpCon recém-feito</td></tr></tbody></table>
+<hr>
+<h2>7. Superfície de API / UI (esboço)</h2>
+<pre><code>Admin (super-admin):
+  GET    /admin/plans
+  GET    /admin/tenants/{id}/subscription
+  PUT    /admin/tenants/{id}/subscription      (mudar plano/limite — manual por ora)
+  GET    /admin/tenants/{id}/usage             (devices usados / limite, features)
+
+UI (estende a admin atual):
+  página &quot;Planos &amp; Licenças&quot;: por tenant → plano, status, devices X/limite,
+  features liberadas, botão de upgrade (futuro: leva ao checkout).</code></pre>
+<hr>
+<h2>8. O que NÃO entra na v1 (deferimentos conscientes)</h2>
+<ul><li><strong>Pagamento real</strong> (só a porta <code>IBillingGateway</code> + <code>NullBilling</code>).</li><li><strong>Tiers múltiplos</strong> (só <code>free</code> + <code>managed</code>).</li><li><strong>Gate de feature no agent</strong> (Core basta; agent só reporta).</li><li><strong>Cobrança por capacidade/throughput</strong>.</li><li><strong>License token persistido por device</strong> (gerado on-demand; só vira tabela se precisar offline).</li><li><strong>Medição/metering de uso</strong> pra cobrança variável.</li></ul>
+<hr>
+<h2>9. Sequência sugerida de implementação (quando for a hora)</h2>
+<pre><code>1. Entities Plan + Subscription + migration; seed do plano &quot;free&quot; (default).
+2. Auto-criar Subscription free ao criar tenant.
+3. Gate de contagem no enrollment (soft) + página de uso na UI.
+4. Catálogo de features + gate no ApplyConfigHandler (o enforcement que dá dinheiro).
+5. UI &quot;Planos &amp; Licenças&quot;.
+6. (opcional) LicenseSigner + push/pull pro agent.
+7. (futuro) IBillingGateway real (Asaas/Stripe) + checkout.</code></pre>
+<blockquote>Estimativa grosseira: passos 1-5 são o &quot;base pronta pra cobrar&quot; — sem cobrar ainda.<br>Passo 7 é o &quot;ligar a torneira&quot;.</blockquote>
+</body></html>
