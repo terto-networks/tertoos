@@ -1,0 +1,36 @@
+From: TertoOS <eduardoterto@gmail.com>
+Date: Wed, 21 May 2026 18:00:00 +0000
+Subject: [PATCH] SONiC-ONLY OSPF-SR accept SONiC Loopback (dummy) interfaces
+
+SONiC cria Loopback0 como interface dummy (sem IFF_LOOPBACK). O FRR
+ospf_sr rejeita prefix-SID em interface nao-loopback ("interface X is
+not a Loopback"). Aceitar tambem interfaces nomeadas "Loopback*" para
+o OSPF segment-routing prefix-sid funcionar nos loopbacks do SONiC.
+
+---
+diff --git a/ospfd/ospf_sr.c b/ospfd/ospf_sr.c
+index 078971e963..1495cf475c 100644
+--- a/ospfd/ospf_sr.c
++++ b/ospfd/ospf_sr.c
+@@ -2479,7 +2479,7 @@ DEFUN (sr_prefix_sid,
+ 		return CMD_SUCCESS;
+ 	}
+ 
+-	if (!if_is_loopback(ifp)) {
++	if (!if_is_loopback(ifp) && strncmp(ifp->name, "Loopback", 8) != 0) {
+ 		vty_out(vty, "interface %s is not a Loopback\n", ifp->name);
+ 		XFREE(MTYPE_OSPF_SR_PARAMS, srp);
+ 		return CMD_WARNING_CONFIG_FAILED;
+diff --git a/ospfd/ospf_interface.c b/ospfd/ospf_interface.c
+index 2bbd650819..02e1accfab 100644
+--- a/ospfd/ospf_interface.c
++++ b/ospfd/ospf_interface.c
+@@ -1376,7 +1376,7 @@ uint8_t ospf_default_iftype(struct interface *ifp)
+ {
+ 	if (if_is_pointopoint(ifp))
+ 		return OSPF_IFTYPE_POINTOPOINT;
+-	else if (if_is_loopback(ifp))
++	else if (if_is_loopback(ifp) || strncmp(ifp->name, "Loopback", 8) == 0)
+ 		return OSPF_IFTYPE_LOOPBACK;
+ 	else
+ 		return OSPF_IFTYPE_BROADCAST;
