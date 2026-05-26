@@ -78,15 +78,9 @@ def main():
         else:
             break
 
-    # check version
+    # check version (klish IOS-XR do TertoOS — uptime/sync nao sao klish)
     time.sleep(5)
-    p.sendline('uptime')
-    p.expect([cmd_prompt])
     p.sendline('show version')
-    p.expect([cmd_prompt])
-    p.sendline('show ip bgp sum')
-    p.expect([cmd_prompt])
-    p.sendline('sync')
     p.expect([cmd_prompt])
 
 
