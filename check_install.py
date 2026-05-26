@@ -18,7 +18,8 @@ def main():
 
     login_prompt = "[a-z][a-z0-9-]* login:"
     passwd_prompt = 'Password:'
-    cmd_prompt = "{}@[a-z][a-z0-9-]*:~\$ $".format(args.u)
+    # Aceita bash fallback OU klish IOS-XR (TertoOS)
+    cmd_prompt = "({}@[a-z][a-z0-9-]*:~\$|[a-z][a-z0-9-]*[>#]) $".format(args.u)
     grub_selection = "The highlighted entry will be executed"
     firsttime_prompt = 'firsttime_exit'
     passwd_change_prompt = ['Current password:', 'New password:', 'Retype new password:']
@@ -78,15 +79,9 @@ def main():
         else:
             break
 
-    # check version
+    # check version (klish IOS-XR do TertoOS — uptime/sync nao sao klish)
     time.sleep(5)
-    p.sendline('uptime')
-    p.expect([cmd_prompt])
     p.sendline('show version')
-    p.expect([cmd_prompt])
-    p.sendline('show ip bgp sum')
-    p.expect([cmd_prompt])
-    p.sendline('sync')
     p.expect([cmd_prompt])
 
 
