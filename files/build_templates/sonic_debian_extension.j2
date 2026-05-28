@@ -955,8 +955,14 @@ modprobe mpls_router 2>/dev/null || true
 modprobe mpls_iptunnel 2>/dev/null || true
 sysctl -w net.mpls.platform_labels=1048575 2>/dev/null || true
 sysctl -w net.mpls.conf.default.input=1 2>/dev/null || true
-# espera o syncd criar as interfaces front-panel (ate ~60s)
-for _t in $(seq 1 30); do ls /sys/class/net/ 2>/dev/null | grep -q '^Ethernet' && break; sleep 2; done
+# Espera curta pelas interfaces front-panel — 10s teto. Quando o syncd
+# cria as portas rapido (VS / HW com dataplane), o loop sai antes. Quando
+# nao ha dataplane (HW sem driver, container sem ASIC), o teto eh barato
+# e nao segura o boot. Loopback/Vlan/PortChannel sao aplicados independente.
+for _t in $(seq 1 5); do
+  ls /sys/class/net/ 2>/dev/null | grep -q '^Ethernet' && break
+  sleep 2
+done
 for ifc in $(ls /sys/class/net/ 2>/dev/null | grep -E '^(Ethernet|PortChannel|Vlan|Loopback)'); do
   sysctl -w net.mpls.conf.$ifc.input=1 2>/dev/null || true
 done
