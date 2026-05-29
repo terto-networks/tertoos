@@ -4449,7 +4449,9 @@ class BGPConfigDaemon:
                 command = "vtysh -c 'configure terminal' -c '{}' -c '{}'".format(router, cmd)
                 self.__run_command(table, command)
             elif table == 'OSPFV3_INTERFACE':
-                ifname = key
+                # single-component key (ifname, no VRF) — same fix as ISIS_INTERFACE
+                # below, else we'd emit `interface None`.
+                ifname = key if key is not None else prefix
                 cmd_prefix = ['configure terminal', 'interface {}'.format(ifname)]
                 if not key_map.run_command(self, table, data, cmd_prefix):
                     syslog.syslog(syslog.LOG_ERR, 'failed running ospf6 interface command')
@@ -4525,7 +4527,11 @@ class BGPConfigDaemon:
                         syslog.syslog(syslog.LOG_ERR, 'failed running isis redistribute leaves')
                         continue
             elif table == 'ISIS_INTERFACE':
-                ifname = key
+                # ISIS_INTERFACE key is a single component (the ifname, no VRF), so
+                # __update_bgp's `key.split('|',1)` leaves key=None and puts the
+                # ifname in `prefix`. Fall back to prefix so we configure the real
+                # interface instead of a spurious `interface None`.
+                ifname = key if key is not None else prefix
                 cmd_prefix = ['configure terminal', 'interface {}'.format(ifname)]
                 syslog.syslog(syslog.LOG_INFO, 'IS-IS interface update {}'.format(ifname))
                 if not key_map.run_command(self, table, data, cmd_prefix):
