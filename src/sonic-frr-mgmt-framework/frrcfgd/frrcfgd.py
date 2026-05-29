@@ -2202,6 +2202,7 @@ class BGPConfigDaemon:
         ('password',          '{}isis password {} {}', handle_isis_if_password),
         ('bfd_enable',        '{no:no-prefix}isis bfd', ['true','false']),
         ('passive',           '{no:no-prefix}isis passive', ['true','false']),
+        ('hello_padding',     '{no:no-prefix}isis hello padding', ['true','false']),
     ]
 
     isis_prefix_sid_key_map = [

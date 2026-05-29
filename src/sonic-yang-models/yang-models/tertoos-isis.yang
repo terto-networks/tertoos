@@ -153,6 +153,7 @@ module tertoos-isis {
                 }
                 leaf bfd_enable       { type boolean; }
                 leaf passive          { type boolean; }
+                leaf hello_padding    { type boolean; }
             }
         }
 
